@@ -1,0 +1,872 @@
+openapi: 3.0.3
+info:
+  title: FulfillHub API
+  version: 0.1.0
+  contact:
+    name: FulfillHub Engineering
+    url: https://github.com/Defyland/fulfillhub-go-commerce-platform
+  description: |
+    Contract-first HTTP API for FulfillHub.
+    This contract describes the first executable Go API slice and the planned stable surface for the commerce orchestration workflow.
+servers:
+  - url: http://localhost:8080
+    description: Local development
+tags:
+  - name: Health
+  - name: Orders
+  - name: Shipments
+paths:
+  /healthz:
+    get:
+      tags:
+        - Health
+      summary: Liveness probe
+      description: Returns whether the API process is alive.
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service process is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              examples:
+                alive:
+                  value:
+                    status: ok
+                    service: fulfillhub-api
+                    timestamp: '2026-05-28T20:15:00Z'
+  /readyz:
+    get:
+      tags:
+        - Health
+      summary: Readiness probe
+      description: Returns dependency readiness for traffic routing.
+      operationId: getReadiness
+      responses:
+        '200':
+          description: Dependencies are ready to serve traffic
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReadyResponse'
+              examples:
+                ready:
+                  value:
+                    status: ready
+                    checks:
+                      database: up
+                      broker: up
+                      cache: up
+                    timestamp: '2026-05-28T20:15:00Z'
+        '503':
+          description: At least one dependency is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notReady:
+                  value:
+                    error:
+                      code: dependency_unavailable
+                      message: Readiness check failed because RabbitMQ is unavailable.
+                      retryable: true
+                      details:
+                        - field: broker
+                          issue: connection timeout
+                    meta:
+                      request_id: req_01hzy6yecmr5y8h5x1bd5k8c8n
+                      correlation_id: cor_01hzy6yecmr5y8h5x1bd5k8c8n
+                      timestamp: '2026-05-28T20:15:00Z'
+  /api/v1/orders:
+    post:
+      tags:
+        - Orders
+      summary: Create a new order and start fulfillment orchestration
+      description: Creates an order for the merchant derived from the API key and stores the initial outbox event.
+      operationId: createOrder
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+            minLength: 12
+            maxLength: 128
+          description: Merchant-supplied key used to deduplicate create-order requests.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+            examples:
+              accepted:
+                value:
+                  external_order_id: web-100045
+                  currency: USD
+                  customer:
+                    id: cus_23901
+                    email: samira@example.com
+                    full_name: Samira Costa
+                  shipping_address:
+                    line_1: 55 Market Street
+                    line_2: Suite 11
+                    city: San Francisco
+                    state: CA
+                    postal_code: '94105'
+                    country: US
+                  items:
+                    - sku: SKU-CHAIR-BLK
+                      quantity: 1
+                      unit_price:
+                        amount: 18900
+                        currency: USD
+                  payment_method:
+                    provider: stripe
+                    payment_token: tok_visa_01hzsample
+      responses:
+        '202':
+          description: Order accepted for orchestration
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            X-Correlation-Id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderAcceptedResponse'
+              examples:
+                accepted:
+                  value:
+                    data:
+                      order_id: ord_01hzy72wf4ekcg7fbc7r8rtn2r
+                      merchant_id: mer_01hzy6v4egscg4r7kb3m7jq2dk
+                      status: pending_fulfillment
+                      accepted_at: '2026-05-28T20:15:00Z'
+                    meta:
+                      request_id: req_01hzy72wf4ekcg7fbc7r8rtn2r
+                      correlation_id: cor_01hzy72wf4ekcg7fbc7r8rtn2r
+        '401':
+          description: API key is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                unauthorized:
+                  value:
+                    error:
+                      code: unauthorized
+                      message: Merchant API key is missing or invalid.
+                      retryable: false
+                      details: []
+                    meta:
+                      request_id: req_01hzy751n2g1wcwaz2shx9j5pg
+                      correlation_id: cor_01hzy751n2g1wcwaz2shx9j5pg
+                      timestamp: '2026-05-28T20:15:00Z'
+        '409':
+          description: Another order already exists for the same merchant and external order ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                duplicate:
+                  value:
+                    error:
+                      code: duplicate_order
+                      message: The external order ID has already been accepted for this merchant.
+                      retryable: false
+                      details:
+                        - field: external_order_id
+                          issue: already exists
+                    meta:
+                      request_id: req_01hzy76brbwn8z5vxz86v95pva
+                      correlation_id: cor_01hzy76brbwn8z5vxz86v95pva
+                      timestamp: '2026-05-28T20:15:00Z'
+        '422':
+          description: Request payload failed validation
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidPayload:
+                  value:
+                    error:
+                      code: validation_failed
+                      message: Request body contains invalid fields.
+                      retryable: false
+                      details:
+                        - field: items[0].quantity
+                          issue: must be greater than zero
+                    meta:
+                      request_id: req_01hzy77dcrv3qj6hg4n8x6z2v1
+                      correlation_id: cor_01hzy77dcrv3qj6hg4n8x6z2v1
+                      timestamp: '2026-05-28T20:15:00Z'
+        '429':
+          description: Merchant exceeded the write rate limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                limited:
+                  value:
+                    error:
+                      code: rate_limited
+                      message: Too many order creation requests for this merchant.
+                      retryable: true
+                      details: []
+                    meta:
+                      request_id: req_01hzy7899n59v4ttm2x2apqkkm
+                      correlation_id: cor_01hzy7899n59v4ttm2x2apqkkm
+                      timestamp: '2026-05-28T20:15:00Z'
+  /api/v1/orders/{orderId}:
+    get:
+      tags:
+        - Orders
+      summary: Fetch an order aggregate snapshot
+      description: Returns the current order projection when the caller is authorized for the order's merchant.
+      operationId: getOrder
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Order found
+          headers:
+            X-Request-Id:
+              schema:
+                type: string
+            X-Correlation-Id:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderResponse'
+              examples:
+                orderFound:
+                  value:
+                    data:
+                      order_id: ord_01hzy72wf4ekcg7fbc7r8rtn2r
+                      merchant_id: mer_01hzy6v4egscg4r7kb3m7jq2dk
+                      external_order_id: web-100045
+                      status: shipment_created
+                      currency: USD
+                      totals:
+                        subtotal:
+                          amount: 18900
+                          currency: USD
+                        shipping:
+                          amount: 1200
+                          currency: USD
+                        total:
+                          amount: 20100
+                          currency: USD
+                      items:
+                        - sku: SKU-CHAIR-BLK
+                          quantity: 1
+                          unit_price:
+                            amount: 18900
+                            currency: USD
+                          reservation_status: reserved
+                      payment:
+                        provider: stripe
+                        status: authorized
+                        authorization_id: pay_01hzy7aqwbrk4k6q31z9r1rj6z
+                      shipment:
+                        shipment_id: shp_01hzy7bkqj29z5wdpq3z6hccbc
+                        status: label_created
+                        carrier: ups
+                        tracking_number: 1Z999AA10123456784
+                      created_at: '2026-05-28T20:15:00Z'
+                      updated_at: '2026-05-28T20:15:09Z'
+                    meta:
+                      request_id: req_01hzy7cn4r5k2y4r4d49gs68f0
+                      correlation_id: cor_01hzy72wf4ekcg7fbc7r8rtn2r
+        '401':
+          description: Caller is not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is authenticated but not allowed to access this merchant order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: The caller cannot access this order.
+                      retryable: false
+                      details: []
+                    meta:
+                      request_id: req_01hzy7dwvhrk0sqhkg1j81pc1n
+                      correlation_id: cor_01hzy72wf4ekcg7fbc7r8rtn2r
+                      timestamp: '2026-05-28T20:15:00Z'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /api/v1/orders/{orderId}/cancel:
+    post:
+      tags:
+        - Orders
+      summary: Request order cancellation
+      description: Accepts a cancellation request and records a cancellation outbox event when the current state allows it.
+      operationId: cancelOrder
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: orderId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CancelOrderRequest'
+            examples:
+              cancel:
+                value:
+                  reason: customer_requested
+                  requested_by:
+                    type: merchant_user
+                    id: usr_93842
+      responses:
+        '202':
+          description: Cancellation accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderAcceptedResponse'
+              examples:
+                accepted:
+                  value:
+                    data:
+                      order_id: ord_01hzy72wf4ekcg7fbc7r8rtn2r
+                      merchant_id: mer_01hzy6v4egscg4r7kb3m7jq2dk
+                      status: cancellation_pending
+                      accepted_at: '2026-05-28T20:16:00Z'
+                    meta:
+                      request_id: req_01hzy7gk1g1h2aajm1y8t4k3rk
+                      correlation_id: cor_01hzy72wf4ekcg7fbc7r8rtn2r
+        '409':
+          description: Cancellation is not allowed in the current order state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                conflict:
+                  value:
+                    error:
+                      code: invalid_state_transition
+                      message: Orders already handed off to the carrier cannot be cancelled automatically.
+                      retryable: false
+                      details:
+                        - field: status
+                          issue: current state is in_transit
+                    meta:
+                      request_id: req_01hzy7hjfk3tp29jf8a1jm1qpp
+                      correlation_id: cor_01hzy72wf4ekcg7fbc7r8rtn2r
+                      timestamp: '2026-05-28T20:16:00Z'
+  /api/v1/shipments/{shipmentId}:
+    get:
+      tags:
+        - Shipments
+      summary: Fetch shipment state for a merchant order
+      description: Returns shipment state and carrier timeline when a shipment exists and the caller is authorized.
+      operationId: getShipment
+      security:
+        - ApiKeyAuth: []
+        - BearerAuth: []
+      parameters:
+        - in: path
+          name: shipmentId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Shipment found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShipmentResponse'
+              examples:
+                shipmentFound:
+                  value:
+                    data:
+                      shipment_id: shp_01hzy7bkqj29z5wdpq3z6hccbc
+                      order_id: ord_01hzy72wf4ekcg7fbc7r8rtn2r
+                      merchant_id: mer_01hzy6v4egscg4r7kb3m7jq2dk
+                      carrier: ups
+                      tracking_number: 1Z999AA10123456784
+                      status: in_transit
+                      events:
+                        - occurred_at: '2026-05-28T20:15:22Z'
+                          status: label_created
+                          description: Label created with carrier.
+                        - occurred_at: '2026-05-28T22:30:10Z'
+                          status: in_transit
+                          description: Package accepted at origin facility.
+                    meta:
+                      request_id: req_01hzy7kwm0cfg5r4w8t9c0a93q
+                      correlation_id: cor_01hzy72wf4ekcg7fbc7r8rtn2r
+        '404':
+          description: Shipment not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /metrics:
+    get:
+      tags:
+        - Health
+      summary: Prometheus metrics
+      description: Exposes Prometheus-compatible counters for the first executable API slice.
+      operationId: getMetrics
+      responses:
+        '200':
+          description: Metrics in Prometheus text exposition format
+          content:
+            text/plain:
+              schema:
+                type: string
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Merchant-scoped API key.
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Operations token with role claims.
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - service
+        - timestamp
+      properties:
+        status:
+          type: string
+          example: ok
+        service:
+          type: string
+          example: fulfillhub-api
+        timestamp:
+          type: string
+          format: date-time
+    ReadyResponse:
+      type: object
+      required:
+        - status
+        - checks
+        - timestamp
+      properties:
+        status:
+          type: string
+          example: ready
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+          example:
+            database: up
+            broker: up
+            cache: up
+        timestamp:
+          type: string
+          format: date-time
+    CreateOrderRequest:
+      type: object
+      required:
+        - external_order_id
+        - currency
+        - customer
+        - shipping_address
+        - items
+        - payment_method
+      properties:
+        external_order_id:
+          type: string
+          maxLength: 64
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        customer:
+          $ref: '#/components/schemas/Customer'
+        shipping_address:
+          $ref: '#/components/schemas/Address'
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CreateOrderItem'
+        payment_method:
+          $ref: '#/components/schemas/PaymentMethod'
+    CreateOrderItem:
+      type: object
+      required:
+        - sku
+        - quantity
+        - unit_price
+      properties:
+        sku:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        unit_price:
+          $ref: '#/components/schemas/Money'
+    PaymentMethod:
+      type: object
+      required:
+        - provider
+        - payment_token
+      properties:
+        provider:
+          type: string
+          example: stripe
+        payment_token:
+          type: string
+    Customer:
+      type: object
+      required:
+        - id
+        - email
+        - full_name
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        full_name:
+          type: string
+    Address:
+      type: object
+      required:
+        - line_1
+        - city
+        - state
+        - postal_code
+        - country
+      properties:
+        line_1:
+          type: string
+        line_2:
+          type: string
+          nullable: true
+        city:
+          type: string
+        state:
+          type: string
+        postal_code:
+          type: string
+        country:
+          type: string
+          minLength: 2
+          maxLength: 2
+    OrderAcceptedResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: object
+          required:
+            - order_id
+            - merchant_id
+            - status
+            - accepted_at
+          properties:
+            order_id:
+              type: string
+            merchant_id:
+              type: string
+            status:
+              type: string
+            accepted_at:
+              type: string
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/Meta'
+    OrderResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: object
+          required:
+            - order_id
+            - merchant_id
+            - external_order_id
+            - status
+            - currency
+            - totals
+            - items
+            - created_at
+            - updated_at
+          properties:
+            order_id:
+              type: string
+            merchant_id:
+              type: string
+            external_order_id:
+              type: string
+            status:
+              type: string
+              enum:
+                - pending_fulfillment
+                - inventory_reserved
+                - payment_authorized
+                - shipment_created
+                - completed
+                - cancellation_pending
+                - cancelled
+                - failed
+            currency:
+              type: string
+            totals:
+              type: object
+              required:
+                - subtotal
+                - shipping
+                - total
+              properties:
+                subtotal:
+                  $ref: '#/components/schemas/Money'
+                shipping:
+                  $ref: '#/components/schemas/Money'
+                total:
+                  $ref: '#/components/schemas/Money'
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/OrderItem'
+            payment:
+              type: object
+              nullable: true
+              properties:
+                provider:
+                  type: string
+                status:
+                  type: string
+                authorization_id:
+                  type: string
+            shipment:
+              type: object
+              nullable: true
+              properties:
+                shipment_id:
+                  type: string
+                status:
+                  type: string
+                carrier:
+                  type: string
+                tracking_number:
+                  type: string
+            created_at:
+              type: string
+              format: date-time
+            updated_at:
+              type: string
+              format: date-time
+        meta:
+          $ref: '#/components/schemas/Meta'
+    OrderItem:
+      type: object
+      required:
+        - sku
+        - quantity
+        - unit_price
+        - reservation_status
+      properties:
+        sku:
+          type: string
+        quantity:
+          type: integer
+        unit_price:
+          $ref: '#/components/schemas/Money'
+        reservation_status:
+          type: string
+          enum:
+            - pending
+            - reserved
+            - released
+            - rejected
+    ShipmentResponse:
+      type: object
+      required:
+        - data
+        - meta
+      properties:
+        data:
+          type: object
+          required:
+            - shipment_id
+            - order_id
+            - merchant_id
+            - carrier
+            - tracking_number
+            - status
+            - events
+          properties:
+            shipment_id:
+              type: string
+            order_id:
+              type: string
+            merchant_id:
+              type: string
+            carrier:
+              type: string
+            tracking_number:
+              type: string
+            status:
+              type: string
+            events:
+              type: array
+              items:
+                $ref: '#/components/schemas/ShipmentEvent'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ShipmentEvent:
+      type: object
+      required:
+        - occurred_at
+        - status
+        - description
+      properties:
+        occurred_at:
+          type: string
+          format: date-time
+        status:
+          type: string
+        description:
+          type: string
+    CancelOrderRequest:
+      type: object
+      required:
+        - reason
+        - requested_by
+      properties:
+        reason:
+          type: string
+          enum:
+            - customer_requested
+            - fraud_review
+            - merchant_error
+        requested_by:
+          type: object
+          required:
+            - type
+            - id
+          properties:
+            type:
+              type: string
+              enum:
+                - merchant_user
+                - support_agent
+                - automation
+            id:
+              type: string
+    Money:
+      type: object
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: integer
+          description: Monetary amount in minor units.
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - meta
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+        meta:
+          $ref: '#/components/schemas/Meta'
+    ErrorObject:
+      type: object
+      required:
+        - code
+        - message
+        - retryable
+        - details
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        retryable:
+          type: boolean
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+    ErrorDetail:
+      type: object
+      required:
+        - field
+        - issue
+      properties:
+        field:
+          type: string
+        issue:
+          type: string
+    Meta:
+      type: object
+      required:
+        - request_id
+        - correlation_id
+      properties:
+        request_id:
+          type: string
+        correlation_id:
+          type: string
+        timestamp:
+          type: string
+          format: date-time

@@ -1,26 +1,47 @@
 # FulfillHub Engineering Baseline
 
-This repository follows the initiative-wide standards below.
+This repository applies the portfolio-wide engineering spec to a commerce orchestration domain. The current state includes a Phase 1 executable Go slice plus the product narrative, architecture decisions, contracts, quality gates, and operational expectations needed for the next persistence and messaging phases.
 
-## Mandatory outcomes
+## Required artifacts in this repository
 
-- Product-grade `README.md` with product and engineering sections
-- `openapi.yaml` once the HTTP surface exists
-- `docs/adr/`, `docs/architecture/`, `docs/events/`, `docs/benchmarks/`, `docs/api/`, `docs/diagrams/`, and `docs/runbooks/`
-- atomic Conventional Commit history
-- GitHub Actions for lint, tests, security, build, coverage, and OpenAPI validation
-- observability with structured logs, metrics, traces, request IDs, and readiness endpoints
-- documented k6 performance baselines
+- Product and engineering entrypoint in `README.md`
+- Contract-first HTTP API in `openapi.yaml`
+- API examples and error model in `docs/api/`
+- Architecture notes and data model in `docs/architecture/`
+- Architecture decision records in `docs/adr/`
+- Event topology in `docs/events/`
+- Visual diagrams in `docs/diagrams/`
+- Performance methodology in `docs/benchmarks/` and `benchmarks/`
+- Operational failure handling in `docs/runbooks/`
+- Repository quality gates in `.github/workflows/phase0-quality.yml`
+- Go API runtime under `cmd/fulfillhub-api`
+- Go domain and HTTP tests under `internal/`
+- Docker build definition in `Dockerfile`
 
-## FulfillHub-specific emphasis
+## FulfillHub-specific engineering commitments
 
-- explicit saga state machine
-- transactional outbox on state-changing publishers
-- inbox tables for idempotent consumers
-- correlation, causation, and trace propagation across services
-- retry, DLQ, and consumer acknowledgement coverage
-- contract and failure tests around event schemas and compensation flows
+- Order orchestration is modeled as an explicit saga with observable state transitions
+- State-changing publishes are expected to use a transactional outbox
+- Consumers are expected to use inbox deduplication and explicit acknowledgements
+- Correlation identifiers must propagate across HTTP, SQL, and RabbitMQ boundaries
+- Tenant isolation is non-negotiable on every read and write path
+- Failure scenarios must be testable, not only documented
 
-## Phase 0 boundary
+## Current boundary
 
-This repository intentionally stops before scaffolding the Go workspace or services. The goal of this phase is only to lock scope and standards.
+The current executable slice includes:
+
+- Go module scaffolding
+- HTTP order creation, lookup, and cancellation handlers
+- health, readiness, and metrics endpoints
+- in-memory order store and outbox event recording
+- unit, request, authorization, validation, and native benchmark coverage
+
+It intentionally does not include yet:
+
+- database migrations
+- Docker Compose runtime
+- live RabbitMQ, PostgreSQL, or Redis integrations
+- k6 network load test results
+
+The next phase must add durable persistence and messaging while preserving the contracts and decisions already documented here.
