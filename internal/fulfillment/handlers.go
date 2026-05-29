@@ -17,16 +17,28 @@ type OrderStatusUpdater interface {
 type Projector interface {
 	RecordInventoryReserved(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordPaymentAuthorized(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, payment commerce.Payment, audit commerce.AuditLog) error
+	RecordPaymentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) error
 	RecordNotificationQueued(ctx context.Context, source commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordCompensation(ctx context.Context, source commerce.OutboxEvent, status commerce.OrderStatus, audit commerce.AuditLog) error
 }
 
+type PaymentAuthorizer interface {
+	AuthorizePayment(ctx context.Context, event commerce.OutboxEvent) (commerce.Payment, error)
+}
+
+type PaymentAuthorizerFunc func(context.Context, commerce.OutboxEvent) (commerce.Payment, error)
+
+func (f PaymentAuthorizerFunc) AuthorizePayment(ctx context.Context, event commerce.OutboxEvent) (commerce.Payment, error) {
+	return f(ctx, event)
+}
+
 type Dependencies struct {
-	Projector Projector
-	Orders    OrderStatusUpdater
-	Clock     func() time.Time
-	NewID     func(prefix string) string
+	Projector         Projector
+	Orders            OrderStatusUpdater
+	PaymentAuthorizer PaymentAuthorizer
+	Clock             func() time.Time
+	NewID             func(prefix string) string
 }
 
 func HandlerForQueue(queue string, deps Dependencies) (messaging.EventHandler, error) {
@@ -126,13 +138,39 @@ func authorizePayment(ctx context.Context, deps Dependencies, event commerce.Out
 		return err
 	}
 	now := deps.Clock()
+	if deps.PaymentAuthorizer != nil {
+		authorized, err := deps.PaymentAuthorizer.AuthorizePayment(ctx, event)
+		if err != nil {
+			failed := nextEventAt(deps, event, "payment.failed", now)
+			audit := systemAudit(event, "payment.failed", now)
+			audit.Details["error"] = err.Error()
+			return deps.Projector.RecordPaymentFailed(ctx, event, failed, audit)
+		}
+		payment := normalizedPayment(authorized)
+		if payment.AuthorizationID == "" {
+			payment.AuthorizationID = deps.NewID("pay")
+		}
+		next := nextEventAt(deps, event, "payment.authorized", now)
+		return deps.Projector.RecordPaymentAuthorized(ctx, event, next, payment, systemAudit(event, "payment.authorized", now))
+	}
+
 	next := nextEventAt(deps, event, "payment.authorized", now)
-	payment := commerce.Payment{
+	payment := normalizedPayment(commerce.Payment{
 		Provider:        "fake-payment",
 		Status:          "authorized",
 		AuthorizationID: deps.NewID("pay"),
-	}
+	})
 	return deps.Projector.RecordPaymentAuthorized(ctx, event, next, payment, systemAudit(event, "payment.authorized", now))
+}
+
+func normalizedPayment(payment commerce.Payment) commerce.Payment {
+	if payment.Provider == "" {
+		payment.Provider = "fake-payment"
+	}
+	if payment.Status == "" {
+		payment.Status = "authorized"
+	}
+	return payment
 }
 
 func createShipment(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {

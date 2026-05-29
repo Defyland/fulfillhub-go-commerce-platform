@@ -75,6 +75,21 @@ Actions:
 3. Restore DB access first, then inspect outbox lag and consumer backlog.
 4. Re-run only the minimal set of affected messages after health stabilizes.
 
+## Scenario: payment authorization failure after inventory reservation
+
+Symptoms:
+
+- `payment.failed` events appear after `inventory.reserved`
+- affected orders have payment status `failed`
+- compensation worker records `compensation.payment_failed`
+
+Actions:
+
+1. Inspect the `payment.failed` audit details for the provider error.
+2. Confirm whether the payment provider outage is transient or request-specific.
+3. If transient, wait for retry queues to drain before manual intervention.
+4. If request-specific, let compensation cancel the order and notify the merchant.
+
 ## Scenario: duplicate merchant order submission
 
 Symptoms:

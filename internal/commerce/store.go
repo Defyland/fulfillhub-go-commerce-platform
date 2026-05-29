@@ -135,6 +135,28 @@ func (s *MemoryStore) RecordPaymentAuthorized(_ context.Context, source OutboxEv
 	return nil
 }
 
+func (s *MemoryStore) RecordPaymentFailed(_ context.Context, source OutboxEvent, next OutboxEvent, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	order, ok := s.orders[source.OrderID]
+	if !ok {
+		return ErrNotFound
+	}
+	provider := "fake-payment"
+	if order.Payment != nil && order.Payment.Provider != "" {
+		provider = order.Payment.Provider
+	}
+	order.Payment = &Payment{
+		Provider: provider,
+		Status:   "failed",
+	}
+	order.UpdatedAt = next.OccurredAt
+	s.outbox = append(s.outbox, next)
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
 func (s *MemoryStore) RecordShipmentCreated(_ context.Context, source OutboxEvent, next OutboxEvent, shipment Shipment, audit AuditLog) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

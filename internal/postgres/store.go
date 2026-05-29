@@ -308,6 +308,55 @@ func (s *Store) RecordPaymentAuthorized(ctx context.Context, source commerce.Out
 	return nil
 }
 
+func (s *Store) RecordPaymentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_payment_failed", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", source.OrderID),
+		attribute.String("fulfillhub.merchant_id", source.MerchantID),
+	))
+	defer finishSpan(span, &err, "record payment failure")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record payment failure: %w", err)
+	}
+	defer rollback(tx)
+
+	var provider string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(payment_provider, 'fake-payment')
+		FROM orders
+		WHERE order_id = $1
+	`, source.OrderID).Scan(&provider); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return commerce.ErrNotFound
+		}
+		return fmt.Errorf("load order for payment failure: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET payment_provider = $2,
+			payment_status = 'failed',
+			payment_authorization_id = NULL,
+			updated_at = $3,
+			version = version + 1
+		WHERE order_id = $1
+	`, source.OrderID, provider, next.OccurredAt); err != nil {
+		return fmt.Errorf("update order payment failure: %w", err)
+	}
+	if err := insertOutboxEvent(ctx, tx, next); err != nil {
+		return err
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record payment failure: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) (err error) {
 	ctx = contextOrBackground(ctx)
 	ctx, span := postgresTracer().Start(ctx, "postgres.record_shipment_created", trace.WithAttributes(

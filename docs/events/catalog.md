@@ -62,6 +62,9 @@
 - Inventory, payment, and shipment workers persist their projections and write
   the next saga event through the transactional outbox instead of publishing
   directly to RabbitMQ.
+- Payment worker authorization failures write `payment.failed` to the
+  transactional outbox with audit details before compensation consumes the
+  failure event.
 - The order finalizer updates the order to `completed` and writes
   `order.completed` through the transactional outbox.
 - The notification worker records durable email queueing projections for

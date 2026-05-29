@@ -84,6 +84,14 @@ The current worker records the provider authorization projection in one transact
 3. insert `outbox_events` row for `payment.authorized`
 4. insert `audit_logs` row for `payment.authorized`
 
+### Payment authorization failure
+
+The current worker records provider authorization failure in one transaction:
+
+1. update the order payment status to `failed`
+2. insert `outbox_events` row for `payment.failed`
+3. insert `audit_logs` row for `payment.failed` with the provider error detail
+
 ### Shipment creation
 
 The current worker records the carrier handoff projection in one transaction:
