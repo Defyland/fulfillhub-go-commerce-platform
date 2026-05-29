@@ -56,11 +56,18 @@ One transaction must:
 ### Order cancellation finalization
 
 The current cancellation worker finalizes accepted cancellation requests in one
-transaction:
+transaction. Pre-shipment orders are cancelled automatically:
 
 1. update `orders.status` to `cancelled`
 2. insert `outbox_events` row for `order.cancelled`
 3. insert `audit_logs` row for `order.cancelled`
+
+Orders that already have a carrier shipment projection are not cancelled
+automatically:
+
+1. update `orders.status` to `manual_review`
+2. insert `outbox_events` row for `order.manual_review_required`
+3. insert `audit_logs` row for `order.manual_review_required`
 
 ### DLQ replay
 

@@ -578,6 +578,98 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if voided.Payment == nil || voided.Payment.Status != "voided" {
 		t.Fatalf("voided payment = %+v, want voided", voided.Payment)
 	}
+	manualReviewOrder := &commerce.Order{
+		OrderID:         "ord_pg_manual_review_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		MerchantID:      "mer_pg_test",
+		ExternalOrderID: "external_pg_manual_review_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		Status:          commerce.StatusPendingFulfillment,
+		Currency:        "USD",
+		Totals: commerce.OrderTotals{
+			Subtotal: commerce.Money{Amount: 18900, Currency: "USD"},
+			Shipping: commerce.Money{Amount: 1200, Currency: "USD"},
+			Total:    commerce.Money{Amount: 20100, Currency: "USD"},
+		},
+		Items: []commerce.OrderItem{{
+			SKU:               "SKU-CHAIR-BLK",
+			Quantity:          1,
+			UnitPrice:         commerce.Money{Amount: 18900, Currency: "USD"},
+			ReservationStatus: "pending",
+		}},
+		Payment:   &commerce.Payment{Provider: "stripe", Status: "pending_authorization"},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	manualReviewCreated := commerce.OutboxEvent{
+		MessageID:     "msg_pg_manual_review_created_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: "cor_pg_manual_review",
+		CausationID:   "msg_pg_manual_review_created_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		EventType:     "order.created",
+		OrderID:       manualReviewOrder.OrderID,
+		MerchantID:    manualReviewOrder.MerchantID,
+		OccurredAt:    now.Add(12 * time.Second),
+	}
+	if _, _, err := store.InsertOrder(ctx, manualReviewOrder.MerchantID, "idem_pg_manual_review_"+strings.ReplaceAll(t.Name(), "/", "_"), manualReviewOrder, manualReviewCreated, commerce.AuditLog{
+		MerchantID:    manualReviewOrder.MerchantID,
+		OrderID:       manualReviewOrder.OrderID,
+		ActorType:     "merchant",
+		ActorID:       manualReviewOrder.MerchantID,
+		Action:        "order.create",
+		CorrelationID: manualReviewCreated.CorrelationID,
+		CreatedAt:     manualReviewCreated.OccurredAt,
+	}); err != nil {
+		t.Fatalf("insert manual review order: %v", err)
+	}
+	manualReviewShipment := commerce.OutboxEvent{
+		MessageID:     "msg_pg_manual_review_shipment_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: manualReviewCreated.CorrelationID,
+		CausationID:   manualReviewCreated.MessageID,
+		EventType:     "shipment.created",
+		OrderID:       manualReviewOrder.OrderID,
+		MerchantID:    manualReviewOrder.MerchantID,
+		OccurredAt:    now.Add(13 * time.Second),
+	}
+	if err := store.RecordShipmentCreated(ctx, manualReviewCreated, manualReviewShipment, commerce.Shipment{
+		ShipmentID:     "shp_pg_manual_review_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		Status:         "created",
+		Carrier:        "fake-carrier",
+		TrackingNumber: "TRACK-PG-MANUAL-REVIEW",
+	}, commerce.AuditLog{
+		MerchantID:    manualReviewOrder.MerchantID,
+		OrderID:       manualReviewOrder.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "shipment.created",
+		CorrelationID: manualReviewCreated.CorrelationID,
+		CreatedAt:     manualReviewShipment.OccurredAt,
+	}); err != nil {
+		t.Fatalf("record manual review shipment: %v", err)
+	}
+	manualReviewEvent := commerce.OutboxEvent{
+		MessageID:     "msg_pg_manual_review_required_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: manualReviewCreated.CorrelationID,
+		CausationID:   manualReviewShipment.MessageID,
+		EventType:     "order.manual_review_required",
+		OrderID:       manualReviewOrder.OrderID,
+		MerchantID:    manualReviewOrder.MerchantID,
+		OccurredAt:    now.Add(14 * time.Second),
+	}
+	if _, err := store.UpdateOrderStatus(ctx, manualReviewOrder.OrderID, commerce.StatusManualReview, manualReviewEvent.OccurredAt, manualReviewEvent, commerce.AuditLog{
+		MerchantID:    manualReviewOrder.MerchantID,
+		OrderID:       manualReviewOrder.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "order.manual_review_required",
+		CorrelationID: manualReviewCreated.CorrelationID,
+		CreatedAt:     manualReviewEvent.OccurredAt,
+		Details: map[string]string{
+			"source_message_id": manualReviewShipment.MessageID,
+			"source_event_type": manualReviewShipment.EventType,
+			"review_reason":     "shipment_already_created",
+		},
+	}); err != nil {
+		t.Fatalf("record manual review status: %v", err)
+	}
+	assertPostgresOrderStatus(t, ctx, store, manualReviewOrder.OrderID, commerce.StatusManualReview)
 	auditLogs := store.AuditLogs()
 	if len(auditLogs) == 0 {
 		t.Fatal("expected at least one audit log")

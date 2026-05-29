@@ -366,6 +366,40 @@ func TestNotificationHandlerQueuesFailureEmailAudit(t *testing.T) {
 	}
 }
 
+func TestNotificationHandlerQueuesManualReviewEmailAudit(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	handler := handlerForTest(t, messaging.NotificationsEmailQueue, Dependencies{
+		Projector: store,
+		Clock: func() time.Time {
+			return time.Date(2026, 5, 29, 13, 20, 0, 0, time.UTC)
+		},
+	})
+
+	if err := handler.HandleEvent(context.Background(), commerce.OutboxEvent{
+		MessageID:     "msg_manual_review",
+		CorrelationID: "cor_1",
+		CausationID:   "msg_cancel",
+		EventType:     "order.manual_review_required",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+	}); err != nil {
+		t.Fatalf("notification handler returned error: %v", err)
+	}
+
+	last := service.AuditLogs()[len(service.AuditLogs())-1]
+	if last.Action != "notification.email_queued" {
+		t.Fatalf("last audit action = %q, want notification.email_queued", last.Action)
+	}
+	if last.Details["source_event_type"] != "order.manual_review_required" {
+		t.Fatalf("source event detail = %q, want order.manual_review_required", last.Details["source_event_type"])
+	}
+}
+
 func TestCancellationHandlerFinalizesOrderAndEmitsCancelledEvent(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
@@ -414,6 +448,151 @@ func TestCancellationHandlerFinalizesOrderAndEmitsCancelledEvent(t *testing.T) {
 	last := logs[len(logs)-1]
 	if last.Action != "order.cancelled" {
 		t.Fatalf("last audit action = %q, want order.cancelled", last.Action)
+	}
+}
+
+func TestCancellationHandlerRoutesCreatedShipmentToManualReview(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	created := service.OutboxEvents()[0]
+	shipmentCreated := commerce.OutboxEvent{
+		MessageID:     "msg_shipment_created",
+		CorrelationID: created.CorrelationID,
+		CausationID:   created.MessageID,
+		EventType:     "shipment.created",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+		OccurredAt:    time.Date(2026, 5, 29, 13, 25, 0, 0, time.UTC),
+	}
+	if err := store.RecordShipmentCreated(context.Background(), created, shipmentCreated, commerce.Shipment{
+		ShipmentID:     "shp_manual_review",
+		Status:         "created",
+		Carrier:        "fake-carrier",
+		TrackingNumber: "TRACK-manual-review",
+	}, commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "shipment.created",
+		CorrelationID: created.CorrelationID,
+		CreatedAt:     shipmentCreated.OccurredAt,
+	}); err != nil {
+		t.Fatalf("RecordShipmentCreated returned error: %v", err)
+	}
+	if _, err := service.CancelOrder(order.OrderID, "cor_cancel", commerce.AuditActor{
+		Type:   "merchant_user",
+		ID:     "usr_93842",
+		Reason: "customer_requested",
+	}); err != nil {
+		t.Fatalf("CancelOrder returned error: %v", err)
+	}
+	cancelRequested := lastOutboxEvent(service)
+	ids := []string{"msg_manual_review"}
+	now := time.Date(2026, 5, 29, 13, 30, 0, 0, time.UTC)
+	handler := handlerForTest(t, messaging.OrdersCancelQueue, Dependencies{
+		Orders: store,
+		Clock:  func() time.Time { return now },
+		NewID: func(string) string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	})
+
+	if err := handler.HandleEvent(context.Background(), cancelRequested); err != nil {
+		t.Fatalf("cancellation handler returned error: %v", err)
+	}
+
+	reviewed, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if reviewed.Status != commerce.StatusManualReview {
+		t.Fatalf("order status = %q, want manual_review", reviewed.Status)
+	}
+	reviewEvent := lastOutboxEvent(service)
+	if reviewEvent.EventType != "order.manual_review_required" {
+		t.Fatalf("last event type = %q, want order.manual_review_required", reviewEvent.EventType)
+	}
+	if reviewEvent.CausationID != cancelRequested.MessageID {
+		t.Fatalf("manual review causation id = %q, want %q", reviewEvent.CausationID, cancelRequested.MessageID)
+	}
+	last := service.AuditLogs()[len(service.AuditLogs())-1]
+	if last.Action != "order.manual_review_required" {
+		t.Fatalf("last audit action = %q, want order.manual_review_required", last.Action)
+	}
+	if last.Details["review_reason"] != "shipment_already_created" || last.Details["shipment_id"] != "shp_manual_review" {
+		t.Fatalf("manual review audit details = %+v, want shipment reason", last.Details)
+	}
+}
+
+func TestOrderFinalizerDoesNotCompleteCancellationPendingOrder(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	created := service.OutboxEvents()[0]
+	shipmentCreated := commerce.OutboxEvent{
+		MessageID:     "msg_shipment_created",
+		CorrelationID: created.CorrelationID,
+		CausationID:   created.MessageID,
+		EventType:     "shipment.created",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+		OccurredAt:    time.Date(2026, 5, 29, 13, 25, 0, 0, time.UTC),
+	}
+	if err := store.RecordShipmentCreated(context.Background(), created, shipmentCreated, commerce.Shipment{
+		ShipmentID:     "shp_cancel_race",
+		Status:         "created",
+		Carrier:        "fake-carrier",
+		TrackingNumber: "TRACK-cancel-race",
+	}, commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "shipment.created",
+		CorrelationID: created.CorrelationID,
+		CreatedAt:     shipmentCreated.OccurredAt,
+	}); err != nil {
+		t.Fatalf("RecordShipmentCreated returned error: %v", err)
+	}
+	if _, err := service.CancelOrder(order.OrderID, "cor_cancel", commerce.AuditActor{
+		Type:   "merchant_user",
+		ID:     "usr_93842",
+		Reason: "customer_requested",
+	}); err != nil {
+		t.Fatalf("CancelOrder returned error: %v", err)
+	}
+	eventsBefore := len(service.OutboxEvents())
+	finalizer := handlerForTest(t, messaging.OrdersFinalizeQueue, Dependencies{
+		Orders: store,
+		Clock: func() time.Time {
+			return time.Date(2026, 5, 29, 13, 30, 0, 0, time.UTC)
+		},
+	})
+
+	if err := finalizer.HandleEvent(context.Background(), shipmentCreated); err != nil {
+		t.Fatalf("finalizer handler returned error: %v", err)
+	}
+
+	eventsAfter := service.OutboxEvents()
+	if len(eventsAfter) != eventsBefore {
+		t.Fatalf("outbox events = %d, want unchanged %d", len(eventsAfter), eventsBefore)
+	}
+	cancelled, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if cancelled.Status != commerce.StatusCancellationPending {
+		t.Fatalf("order status = %q, want cancellation_pending", cancelled.Status)
 	}
 }
 

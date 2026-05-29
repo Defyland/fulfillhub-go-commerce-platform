@@ -38,9 +38,15 @@ sequenceDiagram
   API->>DB: update cancellation_pending + outbox event
   Relay->>MQ: publish order.cancel_requested
   MQ->>Cancel: consume order.cancel_requested
-  Cancel->>DB: update order cancelled + outbox event
-  Relay->>MQ: publish order.cancelled
-  MQ->>Notify: consume order.cancelled
+  alt shipment already created
+    Cancel->>DB: update manual_review + outbox event
+    Relay->>MQ: publish order.manual_review_required
+    MQ->>Notify: consume order.manual_review_required
+  else pre-shipment cancellation
+    Cancel->>DB: update order cancelled + outbox event
+    Relay->>MQ: publish order.cancelled
+    MQ->>Notify: consume order.cancelled
+  end
   Notify->>DB: persist notification_events + audit log
 ```
 

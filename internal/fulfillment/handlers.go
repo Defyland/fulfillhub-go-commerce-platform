@@ -12,6 +12,7 @@ import (
 )
 
 type OrderStatusUpdater interface {
+	GetOrder(ctx context.Context, orderID string) (*commerce.Order, error)
 	UpdateOrderStatus(ctx context.Context, orderID string, status commerce.OrderStatus, now time.Time, event commerce.OutboxEvent, audit commerce.AuditLog) (*commerce.Order, error)
 }
 
@@ -143,7 +144,7 @@ func queueNotification(ctx context.Context, deps Dependencies, event commerce.Ou
 
 func isNotificationEvent(eventType string) bool {
 	switch eventType {
-	case "order.completed", "order.cancelled", "inventory.rejected", "payment.failed", "shipment.failed":
+	case "order.completed", "order.cancelled", "order.manual_review_required", "inventory.rejected", "payment.failed", "shipment.failed":
 		return true
 	default:
 		return false
@@ -304,10 +305,23 @@ func completeOrder(ctx context.Context, deps Dependencies, event commerce.Outbox
 	if err := validateEvent(event, "shipment.created"); err != nil {
 		return err
 	}
+	order, err := deps.Orders.GetOrder(ctx, event.OrderID)
+	if err != nil {
+		return err
+	}
+	switch order.Status {
+	case commerce.StatusShipmentCreated:
+	case commerce.StatusCompleted:
+		return nil
+	case commerce.StatusCancellationPending, commerce.StatusManualReview, commerce.StatusCancelled:
+		return nil
+	default:
+		return fmt.Errorf("cannot complete order from status %s", order.Status)
+	}
 
 	now := deps.Clock()
 	completed := nextEventAt(deps, event, "order.completed", now)
-	_, err := deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCompleted, now, completed, systemAudit(event, "order.completed", now))
+	_, err = deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCompleted, now, completed, systemAudit(event, "order.completed", now))
 	return err
 }
 
@@ -318,11 +332,35 @@ func cancelOrder(ctx context.Context, deps Dependencies, event commerce.OutboxEv
 	if err := validateEvent(event, "order.cancel_requested"); err != nil {
 		return err
 	}
+	order, err := deps.Orders.GetOrder(ctx, event.OrderID)
+	if err != nil {
+		return err
+	}
+	if order.Status == commerce.StatusCancelled || order.Status == commerce.StatusManualReview {
+		return nil
+	}
 
 	now := deps.Clock()
+	if requiresManualReview(order) {
+		review := nextEventAt(deps, event, "order.manual_review_required", now)
+		audit := systemAudit(event, "order.manual_review_required", now)
+		audit.Details["review_reason"] = "shipment_already_created"
+		if order.Shipment != nil && order.Shipment.ShipmentID != "" {
+			audit.Details["shipment_id"] = order.Shipment.ShipmentID
+		}
+		_, err := deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusManualReview, now, review, audit)
+		return err
+	}
 	cancelled := nextEventAt(deps, event, "order.cancelled", now)
-	_, err := deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCancelled, now, cancelled, systemAudit(event, "order.cancelled", now))
+	_, err = deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCancelled, now, cancelled, systemAudit(event, "order.cancelled", now))
 	return err
+}
+
+func requiresManualReview(order *commerce.Order) bool {
+	if order.Status == commerce.StatusCompleted {
+		return true
+	}
+	return order.Shipment != nil && order.Shipment.Status != "" && order.Shipment.Status != "failed"
 }
 
 func validateEvent(event commerce.OutboxEvent, expectedType string) error {

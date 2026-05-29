@@ -691,6 +691,7 @@ components:
                 - shipment_created
                 - completed
                 - cancellation_pending
+                - manual_review
                 - cancelled
                 - failed
             currency:

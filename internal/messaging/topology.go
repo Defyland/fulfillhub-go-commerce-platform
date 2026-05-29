@@ -91,7 +91,7 @@ func QueueTopologies() []QueueTopology {
 		},
 		{
 			Queue:       NotificationsEmailQueue,
-			RoutingKeys: []string{"order.completed", "order.cancelled", "inventory.rejected", "payment.failed", "shipment.failed"},
+			RoutingKeys: []string{"order.completed", "order.cancelled", "order.manual_review_required", "inventory.rejected", "payment.failed", "shipment.failed"},
 			RetryQueue:  "notifications.email.retry.60s",
 			RetryTTL:    60 * time.Second,
 			DLQ:         "notifications.email.dlq",

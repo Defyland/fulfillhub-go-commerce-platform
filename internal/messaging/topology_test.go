@@ -56,7 +56,7 @@ func TestQueueTopologiesRouteFailureNotifications(t *testing.T) {
 	if !ok {
 		t.Fatal("notifications queue topology missing")
 	}
-	for _, routingKey := range []string{"inventory.rejected", "payment.failed", "shipment.failed"} {
+	for _, routingKey := range []string{"order.manual_review_required", "inventory.rejected", "payment.failed", "shipment.failed"} {
 		if !contains(topology.RoutingKeys, routingKey) {
 			t.Fatalf("notifications routing keys = %v, want %s", topology.RoutingKeys, routingKey)
 		}

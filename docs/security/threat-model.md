@@ -36,7 +36,8 @@
 - Docker Compose sets a local metrics bearer token and Prometheus scrapes with
   `Authorization: Bearer local-metrics-token`.
 - `order.create`, `order.cancel_requested`, worker-driven `order.completed`,
-  and worker-driven `order.cancelled` audit logs are written with actor and
+  worker-driven `order.cancelled`, and worker-driven
+  `order.manual_review_required` audit logs are written with actor and
   correlation metadata.
 - Worker-driven inventory, payment, and shipment projections write audit logs
   before their follow-up outbox events are published.

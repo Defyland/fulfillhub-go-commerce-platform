@@ -50,6 +50,7 @@ const (
 	StatusPaymentAuthorized   OrderStatus = "payment_authorized"
 	StatusShipmentCreated     OrderStatus = "shipment_created"
 	StatusCancellationPending OrderStatus = "cancellation_pending"
+	StatusManualReview        OrderStatus = "manual_review"
 	StatusCancelled           OrderStatus = "cancelled"
 	StatusCompleted           OrderStatus = "completed"
 	StatusFailed              OrderStatus = "failed"

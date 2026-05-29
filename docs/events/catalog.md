@@ -22,6 +22,7 @@
 | `order.cancel_requested` | Orders | Orders |
 | `order.completed` | Orders | Notifications, analytics |
 | `order.cancelled` | Orders | Notifications, analytics |
+| `order.manual_review_required` | Orders | Notifications, operations |
 
 ## Queue design
 
@@ -33,7 +34,7 @@
 | `orders.finalize` | `shipment.created` | `orders.finalize.retry.15s` | `orders.finalize.dlq` |
 | `orders.cancel` | `order.cancel_requested` | `orders.cancel.retry.15s` | `orders.cancel.dlq` |
 | `orders.compensate` | `inventory.rejected`, `payment.failed`, `shipment.failed` | `orders.compensate.retry.15s` | `orders.compensate.dlq` |
-| `notifications.email` | `order.completed`, `order.cancelled`, `inventory.rejected`, `payment.failed`, `shipment.failed` | `notifications.email.retry.60s` | `notifications.email.dlq` |
+| `notifications.email` | `order.completed`, `order.cancelled`, `order.manual_review_required`, `inventory.rejected`, `payment.failed`, `shipment.failed` | `notifications.email.retry.60s` | `notifications.email.dlq` |
 
 ## Delivery rules
 
@@ -79,10 +80,11 @@
   failure event.
 - The order finalizer updates the order to `completed` and writes
   `order.completed` through the transactional outbox.
-- The order cancellation worker updates the order to `cancelled` and writes
-  `order.cancelled` through the transactional outbox.
+- The order cancellation worker updates pre-shipment orders to `cancelled` with
+  `order.cancelled`, or routes orders with shipment handoff into `manual_review`
+  with `order.manual_review_required`.
 - The notification worker records durable email queueing projections for order
-  completion, cancellation, and fulfillment failure events.
+  completion, cancellation, manual-review, and fulfillment failure events.
 - The compensation worker records durable failure projections for
   `inventory.rejected`, `payment.failed`, and `shipment.failed`.
 - `TestRabbitPublisherIntegration` verifies live RabbitMQ publish and route delivery when `RABBITMQ_URL` is available.
