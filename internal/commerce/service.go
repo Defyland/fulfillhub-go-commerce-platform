@@ -1,6 +1,7 @@
 package commerce
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -43,6 +44,10 @@ func NewService(store Store) *Service {
 }
 
 func (s *Service) CreateOrder(merchantID, idempotencyKey, correlationID string, req CreateOrderRequest) (*Order, bool, error) {
+	return s.CreateOrderContext(context.Background(), merchantID, idempotencyKey, correlationID, req)
+}
+
+func (s *Service) CreateOrderContext(ctx context.Context, merchantID, idempotencyKey, correlationID string, req CreateOrderRequest) (*Order, bool, error) {
 	if err := validateCreateOrder(merchantID, idempotencyKey, req); err != nil {
 		return nil, false, err
 	}
@@ -104,15 +109,23 @@ func (s *Service) CreateOrder(merchantID, idempotencyKey, correlationID string, 
 		CreatedAt:     now,
 	}
 
-	return s.store.InsertOrder(merchantID, idempotencyKey, order, event, audit)
+	return s.store.InsertOrder(ctx, merchantID, idempotencyKey, order, event, audit)
 }
 
 func (s *Service) GetOrder(orderID string) (*Order, error) {
-	return s.store.GetOrder(orderID)
+	return s.GetOrderContext(context.Background(), orderID)
 }
 
 func (s *Service) CancelOrder(orderID, correlationID string, actor AuditActor) (*Order, error) {
-	order, err := s.store.GetOrder(orderID)
+	return s.CancelOrderContext(context.Background(), orderID, correlationID, actor)
+}
+
+func (s *Service) GetOrderContext(ctx context.Context, orderID string) (*Order, error) {
+	return s.store.GetOrder(ctx, orderID)
+}
+
+func (s *Service) CancelOrderContext(ctx context.Context, orderID, correlationID string, actor AuditActor) (*Order, error) {
+	order, err := s.store.GetOrder(ctx, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +152,7 @@ func (s *Service) CancelOrder(orderID, correlationID string, actor AuditActor) (
 		CreatedAt:     now,
 	}
 
-	return s.store.UpdateOrderStatus(orderID, StatusCancellationPending, now, event, audit)
+	return s.store.UpdateOrderStatus(ctx, orderID, StatusCancellationPending, now, event, audit)
 }
 
 func (s *Service) OutboxEvents() []OutboxEvent {

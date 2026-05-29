@@ -1,8 +1,10 @@
 package commerce
 
 import (
+	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestCreateOrderDerivesMerchantAndWritesOutbox(t *testing.T) {
@@ -111,6 +113,20 @@ func TestCreateOrderRejectsDuplicateExternalOrderID(t *testing.T) {
 	}
 }
 
+func TestServicePassesContextToStore(t *testing.T) {
+	store := &contextCapturingStore{}
+	service := NewService(store)
+	ctx := context.WithValue(context.Background(), contextKey("request_id"), "req_1")
+
+	if _, _, err := service.CreateOrderContext(ctx, "mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest()); err != nil {
+		t.Fatalf("CreateOrderContext returned error: %v", err)
+	}
+
+	if got := store.value; got != "req_1" {
+		t.Fatalf("store context value = %v, want req_1", got)
+	}
+}
+
 func TestCreateOrderValidatesRequest(t *testing.T) {
 	service := NewService(NewMemoryStore())
 	req := validCreateOrderRequest()
@@ -124,6 +140,33 @@ func TestCreateOrderValidatesRequest(t *testing.T) {
 	if len(validation.Fields) != 2 {
 		t.Fatalf("validation fields = %d, want 2", len(validation.Fields))
 	}
+}
+
+type contextKey string
+
+type contextCapturingStore struct {
+	value any
+}
+
+func (s *contextCapturingStore) InsertOrder(ctx context.Context, _ string, _ string, order *Order, _ OutboxEvent, _ AuditLog) (*Order, bool, error) {
+	s.value = ctx.Value(contextKey("request_id"))
+	return CloneOrderForStore(order), false, nil
+}
+
+func (s *contextCapturingStore) GetOrder(context.Context, string) (*Order, error) {
+	return nil, ErrNotFound
+}
+
+func (s *contextCapturingStore) UpdateOrderStatus(context.Context, string, OrderStatus, time.Time, OutboxEvent, AuditLog) (*Order, error) {
+	return nil, ErrNotFound
+}
+
+func (s *contextCapturingStore) OutboxEvents() []OutboxEvent {
+	return nil
+}
+
+func (s *contextCapturingStore) AuditLogs() []AuditLog {
+	return nil
 }
 
 func validCreateOrderRequest() CreateOrderRequest {

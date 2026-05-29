@@ -8,9 +8,9 @@ import (
 )
 
 type Store interface {
-	InsertOrder(merchantID, idempotencyKey string, order *Order, event OutboxEvent, audit AuditLog) (*Order, bool, error)
-	GetOrder(orderID string) (*Order, error)
-	UpdateOrderStatus(orderID string, status OrderStatus, now time.Time, event OutboxEvent, audit AuditLog) (*Order, error)
+	InsertOrder(ctx context.Context, merchantID, idempotencyKey string, order *Order, event OutboxEvent, audit AuditLog) (*Order, bool, error)
+	GetOrder(ctx context.Context, orderID string) (*Order, error)
+	UpdateOrderStatus(ctx context.Context, orderID string, status OrderStatus, now time.Time, event OutboxEvent, audit AuditLog) (*Order, error)
 	OutboxEvents() []OutboxEvent
 	AuditLogs() []AuditLog
 }
@@ -50,7 +50,7 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-func (s *MemoryStore) InsertOrder(merchantID, idempotencyKey string, order *Order, event OutboxEvent, audit AuditLog) (*Order, bool, error) {
+func (s *MemoryStore) InsertOrder(_ context.Context, merchantID, idempotencyKey string, order *Order, event OutboxEvent, audit AuditLog) (*Order, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -73,7 +73,7 @@ func (s *MemoryStore) InsertOrder(merchantID, idempotencyKey string, order *Orde
 	return cloneOrder(order), false, nil
 }
 
-func (s *MemoryStore) GetOrder(orderID string) (*Order, error) {
+func (s *MemoryStore) GetOrder(_ context.Context, orderID string) (*Order, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -84,7 +84,7 @@ func (s *MemoryStore) GetOrder(orderID string) (*Order, error) {
 	return cloneOrder(order), nil
 }
 
-func (s *MemoryStore) UpdateOrderStatus(orderID string, status OrderStatus, now time.Time, event OutboxEvent, audit AuditLog) (*Order, error) {
+func (s *MemoryStore) UpdateOrderStatus(_ context.Context, orderID string, status OrderStatus, now time.Time, event OutboxEvent, audit AuditLog) (*Order, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

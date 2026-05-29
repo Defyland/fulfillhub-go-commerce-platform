@@ -11,6 +11,10 @@ import (
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Store struct {
@@ -41,8 +45,16 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) InsertOrder(merchantID, idempotencyKey string, order *commerce.Order, event commerce.OutboxEvent, audit commerce.AuditLog) (*commerce.Order, bool, error) {
-	ctx := context.Background()
+func (s *Store) InsertOrder(ctx context.Context, merchantID, idempotencyKey string, order *commerce.Order, event commerce.OutboxEvent, audit commerce.AuditLog) (created *commerce.Order, replayed bool, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.insert_order", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.merchant_id", merchantID),
+		attribute.String("fulfillhub.order_id", order.OrderID),
+		attribute.String("fulfillhub.external_order_id", order.ExternalOrderID),
+	))
+	defer finishSpan(span, &err, "insert order")
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("begin insert order: %w", err)
@@ -59,6 +71,7 @@ func (s *Store) InsertOrder(merchantID, idempotencyKey string, order *commerce.O
 		if err := tx.Commit(); err != nil {
 			return nil, false, fmt.Errorf("commit idempotent order lookup: %w", err)
 		}
+		span.SetAttributes(attribute.Bool("fulfillhub.idempotent_replay", true))
 		return order, true, nil
 	}
 
@@ -106,15 +119,29 @@ func (s *Store) InsertOrder(merchantID, idempotencyKey string, order *commerce.O
 	if err := tx.Commit(); err != nil {
 		return nil, false, fmt.Errorf("commit insert order: %w", err)
 	}
+	span.SetAttributes(attribute.Bool("fulfillhub.idempotent_replay", false))
 	return commerce.CloneOrderForStore(order), false, nil
 }
 
-func (s *Store) GetOrder(orderID string) (*commerce.Order, error) {
-	return getOrderTx(context.Background(), s.db, orderID)
+func (s *Store) GetOrder(ctx context.Context, orderID string) (order *commerce.Order, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.get_order", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", orderID),
+	))
+	defer finishSpan(span, &err, "get order")
+	return getOrderTx(ctx, s.db, orderID)
 }
 
-func (s *Store) UpdateOrderStatus(orderID string, status commerce.OrderStatus, now time.Time, event commerce.OutboxEvent, audit commerce.AuditLog) (*commerce.Order, error) {
-	ctx := context.Background()
+func (s *Store) UpdateOrderStatus(ctx context.Context, orderID string, status commerce.OrderStatus, now time.Time, event commerce.OutboxEvent, audit commerce.AuditLog) (order *commerce.Order, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.update_order_status", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", orderID),
+		attribute.String("fulfillhub.order_status", string(status)),
+	))
+	defer finishSpan(span, &err, "update order status")
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("begin update order status: %w", err)
@@ -143,7 +170,7 @@ func (s *Store) UpdateOrderStatus(orderID string, status commerce.OrderStatus, n
 	if err := insertAuditLog(ctx, tx, audit); err != nil {
 		return nil, err
 	}
-	order, err := getOrderTx(ctx, tx, orderID)
+	order, err = getOrderTx(ctx, tx, orderID)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +234,17 @@ func (s *Store) AuditLogs() []commerce.AuditLog {
 	return logs
 }
 
-func (s *Store) RecordAuditLog(ctx context.Context, audit commerce.AuditLog) error {
+func (s *Store) RecordAuditLog(ctx context.Context, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_audit_log", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.audit_action", audit.Action),
+		attribute.String("fulfillhub.actor_type", audit.ActorType),
+		attribute.String("fulfillhub.actor_id", audit.ActorID),
+		attribute.String("fulfillhub.correlation_id", audit.CorrelationID),
+	))
+	defer finishSpan(span, &err, "record audit log")
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin record audit log: %w", err)
@@ -222,7 +259,14 @@ func (s *Store) RecordAuditLog(ctx context.Context, audit commerce.AuditLog) err
 	return nil
 }
 
-func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) ([]commerce.OutboxEvent, error) {
+func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) (events []commerce.OutboxEvent, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.pending_outbox_events", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.Int("fulfillhub.outbox.limit", limit),
+	))
+	defer finishSpan(span, &err, "load pending outbox events")
+
 	if limit <= 0 {
 		limit = 100
 	}
@@ -238,7 +282,6 @@ func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) ([]commerce.
 	}
 	defer rows.Close()
 
-	var events []commerce.OutboxEvent
 	for rows.Next() {
 		var event commerce.OutboxEvent
 		if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.EventType, &event.OrderID, &event.MerchantID, &event.OccurredAt); err != nil {
@@ -249,10 +292,18 @@ func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) ([]commerce.
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate pending outbox events: %w", err)
 	}
+	span.SetAttributes(attribute.Int("fulfillhub.outbox.pending_count", len(events)))
 	return events, nil
 }
 
-func (s *Store) MarkOutboxPublished(ctx context.Context, messageID string, publishedAt time.Time) error {
+func (s *Store) MarkOutboxPublished(ctx context.Context, messageID string, publishedAt time.Time) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.mark_outbox_published", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("messaging.message.id", messageID),
+	))
+	defer finishSpan(span, &err, "mark outbox published")
+
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE outbox_events
 		SET published_at = $2
@@ -271,7 +322,16 @@ func (s *Store) MarkOutboxPublished(ctx context.Context, messageID string, publi
 	return nil
 }
 
-func (s *Store) RecordInboxMessage(ctx context.Context, consumerName string, event commerce.OutboxEvent) (bool, error) {
+func (s *Store) RecordInboxMessage(ctx context.Context, consumerName string, event commerce.OutboxEvent) (recorded bool, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_inbox_message", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("messaging.message.id", event.MessageID),
+		attribute.String("fulfillhub.consumer_name", consumerName),
+		attribute.String("fulfillhub.correlation_id", event.CorrelationID),
+	))
+	defer finishSpan(span, &err, "record inbox message")
+
 	result, err := s.db.ExecContext(ctx, `
 		INSERT INTO inbox_messages (consumer_name, message_id, correlation_id)
 		VALUES ($1, $2, $3)
@@ -284,7 +344,9 @@ func (s *Store) RecordInboxMessage(ctx context.Context, consumerName string, eve
 	if err != nil {
 		return false, fmt.Errorf("inspect inbox rows: %w", err)
 	}
-	return rows == 1, nil
+	recorded = rows == 1
+	span.SetAttributes(attribute.Bool("fulfillhub.inbox_recorded", recorded))
+	return recorded, nil
 }
 
 type queryer interface {
@@ -434,4 +496,23 @@ func isUniqueViolation(err error) bool {
 
 func rollback(tx *sql.Tx) {
 	_ = tx.Rollback()
+}
+
+func contextOrBackground(ctx context.Context) context.Context {
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+func postgresTracer() trace.Tracer {
+	return otel.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres")
+}
+
+func finishSpan(span trace.Span, err *error, description string) {
+	if err != nil && *err != nil {
+		span.RecordError(*err)
+		span.SetStatus(codes.Error, description)
+	}
+	span.End()
 }

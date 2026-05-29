@@ -40,7 +40,7 @@ The current executable slice includes:
 - Go module scaffolding
 - HTTP order creation, lookup, and cancellation handlers
 - health, readiness, and metrics endpoints
-- structured HTTP request logs plus OpenTelemetry HTTP and RabbitMQ publish spans
+- structured HTTP request logs plus OpenTelemetry HTTP, SQL, and RabbitMQ publish spans
 - in-memory order store and outbox event recording
 - embedded PostgreSQL migrations and SQL-backed order/outbox/audit persistence
 - RabbitMQ publisher topology and outbox relay process
@@ -57,7 +57,7 @@ The current executable slice includes:
 It intentionally does not include yet:
 
 - issuer, audience, and key-rotation policy for operations JWTs
-- SQL trace instrumentation and RabbitMQ consume spans
+- RabbitMQ consume spans
 - compose-backed CPU, memory, queue-depth, and Redis limiter profiling
 
 The next phase must deepen security and observability around operations tooling

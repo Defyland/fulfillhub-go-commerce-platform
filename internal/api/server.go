@@ -228,7 +228,7 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request, requestID, 
 		return
 	}
 
-	order, replayed, err := s.service.CreateOrder(act.MerchantID, r.Header.Get("Idempotency-Key"), correlationID, req)
+	order, replayed, err := s.service.CreateOrderContext(r.Context(), act.MerchantID, r.Header.Get("Idempotency-Key"), correlationID, req)
 	if err != nil {
 		s.handleCommerceError(w, err, requestID, correlationID)
 		return
@@ -292,7 +292,7 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request, orderID, reque
 		attribute.String("fulfillhub.order_id", orderID),
 		attribute.String("fulfillhub.operation", "get_order"),
 	)
-	order, err := s.service.GetOrder(orderID)
+	order, err := s.service.GetOrderContext(r.Context(), orderID)
 	if err != nil {
 		s.handleCommerceError(w, err, requestID, correlationID)
 		return
@@ -329,7 +329,7 @@ func (s *Server) cancelOrder(w http.ResponseWriter, r *http.Request, orderID, re
 		}, requestID, correlationID)
 		return
 	}
-	order, err := s.service.GetOrder(orderID)
+	order, err := s.service.GetOrderContext(r.Context(), orderID)
 	if err != nil {
 		s.handleCommerceError(w, err, requestID, correlationID)
 		return
@@ -339,7 +339,7 @@ func (s *Server) cancelOrder(w http.ResponseWriter, r *http.Request, orderID, re
 		return
 	}
 
-	order, err = s.service.CancelOrder(orderID, correlationID, commerce.AuditActor{
+	order, err = s.service.CancelOrderContext(r.Context(), orderID, correlationID, commerce.AuditActor{
 		Type: cancelReq.RequestedBy.Type,
 		ID:   cancelReq.RequestedBy.ID,
 	})

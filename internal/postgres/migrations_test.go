@@ -8,6 +8,10 @@ import (
 	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 func TestMigrationsIncludeConsistencyTables(t *testing.T) {
@@ -44,6 +48,15 @@ func TestPostgresStoreIntegration(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	otel.SetTracerProvider(provider)
+	t.Cleanup(func() {
+		otel.SetTracerProvider(noop.NewTracerProvider())
+		if err := provider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	})
 
 	store, err := Open(ctx, databaseURL)
 	if err != nil {
@@ -97,7 +110,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		CreatedAt:     now,
 	}
 
-	created, replayed, err := store.InsertOrder(order.MerchantID, "idem_pg_test_"+strings.ReplaceAll(t.Name(), "/", "_"), order, event, audit)
+	created, replayed, err := store.InsertOrder(ctx, order.MerchantID, "idem_pg_test_"+strings.ReplaceAll(t.Name(), "/", "_"), order, event, audit)
 	if err != nil {
 		t.Fatalf("insert order: %v", err)
 	}
@@ -108,7 +121,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		t.Fatalf("created order id = %q, want %q", created.OrderID, order.OrderID)
 	}
 
-	fetched, err := store.GetOrder(order.OrderID)
+	fetched, err := store.GetOrder(ctx, order.OrderID)
 	if err != nil {
 		t.Fatalf("get order: %v", err)
 	}
@@ -168,4 +181,25 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if !firstInbox || secondInbox {
 		t.Fatalf("inbox dedupe = (%v, %v), want (true, false)", firstInbox, secondInbox)
 	}
+	for _, name := range []string{
+		"postgres.insert_order",
+		"postgres.get_order",
+		"postgres.record_audit_log",
+		"postgres.pending_outbox_events",
+		"postgres.mark_outbox_published",
+		"postgres.record_inbox_message",
+	} {
+		if !hasSpan(recorder.Ended(), name) {
+			t.Fatalf("expected span %q in postgres integration", name)
+		}
+	}
+}
+
+func hasSpan(spans []sdktrace.ReadOnlySpan, name string) bool {
+	for _, span := range spans {
+		if span.Name() == name {
+			return true
+		}
+	}
+	return false
 }
