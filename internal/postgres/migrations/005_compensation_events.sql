@@ -1,3 +1,7 @@
+-- Rollback: before production data exists, drop compensation_events. After
+-- production data exists, preserve failure-handling evidence and deploy a
+-- forward-compatible corrective migration.
+
 CREATE TABLE IF NOT EXISTS compensation_events (
   id BIGSERIAL PRIMARY KEY,
   order_id TEXT NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,

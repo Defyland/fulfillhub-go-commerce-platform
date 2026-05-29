@@ -1,3 +1,8 @@
+-- Rollback: before production data exists, drop shipments,
+-- payment_authorizations, and stock_reservations in reverse dependency order.
+-- After production data exists, preserve projections and repair through a
+-- forward-compatible corrective migration.
+
 CREATE TABLE IF NOT EXISTS stock_reservations (
   order_id TEXT NOT NULL,
   sku TEXT NOT NULL,

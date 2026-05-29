@@ -174,4 +174,11 @@ if ! grep -Fq '/api/v1/orders:' openapi.yaml; then
   exit 1
 fi
 
+for migration in internal/postgres/migrations/*.sql; do
+  if ! grep -Fq 'Rollback:' "$migration"; then
+    echo "missing rollback note in migration: $migration" >&2
+    exit 1
+  fi
+done
+
 echo "Project validation passed."

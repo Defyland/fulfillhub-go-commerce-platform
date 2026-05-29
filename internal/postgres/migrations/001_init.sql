@@ -1,3 +1,8 @@
+-- Rollback: before production data exists, drop audit_logs, inbox_messages,
+-- outbox_events, idempotency_keys, order_items, orders, merchants, and
+-- schema_migrations in reverse dependency order. After
+-- production data exists, prefer a forward-compatible corrective migration.
+
 CREATE TABLE IF NOT EXISTS schema_migrations (
   version TEXT PRIMARY KEY,
   applied_at TIMESTAMPTZ NOT NULL DEFAULT now()

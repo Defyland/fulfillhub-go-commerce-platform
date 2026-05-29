@@ -1,3 +1,7 @@
+-- Rollback: before production data exists, drop notification_events. After
+-- production data exists, preserve the customer communication timeline and
+-- deploy a forward-compatible corrective migration.
+
 CREATE TABLE IF NOT EXISTS notification_events (
   id BIGSERIAL PRIMARY KEY,
   order_id TEXT NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
