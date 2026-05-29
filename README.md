@@ -239,6 +239,8 @@ The most important architecture decisions are recorded in:
 
 ## How to run locally
 
+Requires Go `1.25.10` or newer.
+
 Run the service locally with Go:
 
 ```sh
