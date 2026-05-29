@@ -28,6 +28,15 @@ Actions:
 4. If dependency-related, restore the dependency before replaying.
 5. Replay only after the failing consumer path is verified healthy.
 
+Replay command:
+
+```sh
+RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
+DLQ_QUEUE='inventory.reserve.dlq' \
+TARGET_ROUTING_KEY='order.created' \
+  go run ./cmd/fulfillhub-dlq-replay
+```
+
 ## Scenario: inventory oversell suspicion
 
 Symptoms:

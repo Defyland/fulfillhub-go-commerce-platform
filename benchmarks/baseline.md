@@ -19,7 +19,7 @@ The k6 scripts live under `benchmarks/k6/`.
 
 | Benchmark | Result | Scope |
 | --- | --- | --- |
-| `BenchmarkCreateOrder-10` | 15128 ns/op | In-process Go HTTP handler via `httptest` |
+| `BenchmarkCreateOrder-10` | 15291 ns/op | In-process Go HTTP handler via `httptest` |
 
 ## Measured metrics
 

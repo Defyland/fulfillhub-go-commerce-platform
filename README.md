@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 3 controls and performance-assets slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher topology, Redis rate limiting, inbox idempotency, request tests, authorization tests, database tests, messaging tests, k6 scripts, a native benchmark, Grafana dashboard definition, Docker build validation, and documentation baseline. Live k6 results and provider adapters remain planned next steps.
+> Status: Phase 3 operations slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher topology, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 scripts, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Live k6 results remain the main pending performance artifact.
 
 ## What is this product?
 
@@ -220,6 +220,21 @@ Run the outbox relay when PostgreSQL and RabbitMQ are available:
 DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
 RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
   go run ./cmd/fulfillhub-outbox-relay
+```
+
+Replay a DLQ queue explicitly:
+
+```sh
+RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
+DLQ_QUEUE='inventory.reserve.dlq' \
+TARGET_ROUTING_KEY='order.created' \
+  go run ./cmd/fulfillhub-dlq-replay
+```
+
+Run the local infrastructure stack:
+
+```sh
+docker compose up --build
 ```
 
 Run the full repository validation:

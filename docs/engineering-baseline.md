@@ -1,6 +1,6 @@
 # FulfillHub Engineering Baseline
 
-This repository applies the portfolio-wide engineering spec to a commerce orchestration domain. The current state includes an executable Go API slice, PostgreSQL persistence, RabbitMQ outbox relay code, Redis rate limiting, inbox idempotency, k6 scripts, Grafana dashboard definition, product narrative, architecture decisions, contracts, quality gates, and operational expectations needed for the remaining provider phases.
+This repository applies the portfolio-wide engineering spec to a commerce orchestration domain. The current state includes an executable Go API slice, PostgreSQL persistence, RabbitMQ outbox relay code, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, k6 scripts, Grafana dashboard definition, product narrative, architecture decisions, contracts, quality gates, and operational expectations.
 
 ## Required artifacts in this repository
 
@@ -39,14 +39,15 @@ The current executable slice includes:
 - RabbitMQ publisher topology and outbox relay process
 - Redis-backed rate limiting
 - inbox idempotency primitives
+- DLQ replay command
+- payment and shipment provider adapter interfaces
 - k6 smoke, load, stress, and spike scripts
 - Grafana dashboard definition
 - unit, request, authorization, validation, and native benchmark coverage
 
 It intentionally does not include yet:
 
-- Docker Compose runtime
 - live RabbitMQ integration tests
 - k6 network load test results
 
-The next phase must add k6 measured results, local orchestration, and provider adapters while preserving the contracts and decisions already documented here.
+The next phase must add live RabbitMQ integration tests and measured k6 results while preserving the contracts and decisions already documented here.
