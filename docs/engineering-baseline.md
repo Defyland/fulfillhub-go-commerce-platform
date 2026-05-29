@@ -47,7 +47,7 @@ The current executable slice includes:
 - shared tracing configuration with disabled, stdout, and OTLP/HTTP exporter modes
 - optional bearer protection for the Prometheus metrics endpoint
 - in-memory order store and outbox event recording
-- embedded PostgreSQL migrations, inventory catalog tables, and SQL-backed order/outbox/audit persistence
+- embedded PostgreSQL migrations, tenant foreign keys, inventory catalog tables, and SQL-backed order/outbox/audit persistence
 - RabbitMQ publisher topology and outbox relay process
 - persisted and published message `correlation_id` and `causation_id`
 - RabbitMQ consumer primitive with inbox deduplication, retry scheduling, and explicit ack/nack behavior

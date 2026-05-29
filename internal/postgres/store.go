@@ -75,6 +75,9 @@ func (s *Store) InsertOrder(ctx context.Context, merchantID, idempotencyKey stri
 		return order, true, nil
 	}
 
+	if err := upsertMerchant(ctx, tx, merchantID); err != nil {
+		return nil, false, err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO orders (
 			order_id, merchant_id, external_order_id, status, currency,
@@ -986,6 +989,17 @@ func insertOutboxEvent(ctx context.Context, tx *sql.Tx, event commerce.OutboxEve
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 	`, event.MessageID, event.CorrelationID, event.CausationID, event.EventType, event.OrderID, event.MerchantID, payload, event.OccurredAt); err != nil {
 		return fmt.Errorf("insert outbox event: %w", err)
+	}
+	return nil
+}
+
+func upsertMerchant(ctx context.Context, tx *sql.Tx, merchantID string) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO merchants (id, name)
+		VALUES ($1, $1)
+		ON CONFLICT (id) DO NOTHING
+	`, merchantID); err != nil {
+		return fmt.Errorf("upsert merchant: %w", err)
 	}
 	return nil
 }

@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS merchants (
 
 CREATE TABLE IF NOT EXISTS orders (
   order_id TEXT PRIMARY KEY,
-  merchant_id TEXT NOT NULL,
+  merchant_id TEXT NOT NULL REFERENCES merchants(id),
   external_order_id TEXT NOT NULL,
   status TEXT NOT NULL,
   currency CHAR(3) NOT NULL,

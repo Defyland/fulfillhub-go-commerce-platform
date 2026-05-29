@@ -115,6 +115,32 @@ func TestMigrationsAddInventoryCatalog(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddOrdersMerchantForeignKey(t *testing.T) {
+	initBody, err := migrationsFS.ReadFile("migrations/001_init.sql")
+	if err != nil {
+		t.Fatalf("read init migration: %v", err)
+	}
+	if !strings.Contains(string(initBody), "merchant_id TEXT NOT NULL REFERENCES merchants(id)") {
+		t.Fatal("initial migration does not require orders.merchant_id foreign key")
+	}
+
+	body, err := migrationsFS.ReadFile("migrations/008_orders_merchant_fk.sql")
+	if err != nil {
+		t.Fatalf("read merchant fk migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{
+		"INSERT INTO merchants",
+		"ADD CONSTRAINT fk_orders_merchant",
+		"FOREIGN KEY (merchant_id)",
+		"VALIDATE CONSTRAINT fk_orders_merchant",
+	} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("merchant fk migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -195,6 +221,13 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}
 	if created.OrderID != order.OrderID {
 		t.Fatalf("created order id = %q, want %q", created.OrderID, order.OrderID)
+	}
+	var merchantName string
+	if err := store.DB().QueryRowContext(ctx, `SELECT name FROM merchants WHERE id = $1`, order.MerchantID).Scan(&merchantName); err != nil {
+		t.Fatalf("query inserted merchant: %v", err)
+	}
+	if merchantName != order.MerchantID {
+		t.Fatalf("merchant name = %q, want %q", merchantName, order.MerchantID)
 	}
 
 	fetched, err := store.GetOrder(ctx, order.OrderID)

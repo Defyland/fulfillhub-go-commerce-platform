@@ -9,7 +9,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 | `merchants` | Tenant registry and API credential metadata | Unique merchant slug |
 | `warehouses` | Physical inventory locations | Foreign key to `merchants.id` |
 | `inventory_items` | Current sellable and reserved stock per SKU and warehouse | Unique `(warehouse_id, sku)` |
-| `orders` | Order aggregate root and state machine | Unique `(merchant_id, external_order_id)` |
+| `orders` | Order aggregate root and state machine | FK to `merchants.id`, unique `(merchant_id, external_order_id)` |
 | `order_items` | Immutable line items snapshot | Foreign key to `orders.id` |
 | `stock_reservations` | Reservation records used by inventory saga steps | Unique `(order_id, sku)` |
 | `payment_authorizations` | Provider attempts and results | Unique successful authorization per `order_id` |
