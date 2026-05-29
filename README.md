@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 3 operations slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher topology, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 scripts, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Live k6 results remain the main pending performance artifact.
+> Status: Phase 3 operations slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher topology, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed resource profiling remains the main pending performance artifact.
 
 ## What is this product?
 
@@ -135,19 +135,27 @@ The current implementation includes Go tests for:
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
 
-The remaining planned performance layer is measured k6 load, stress, and spike results once those longer runs are executed.
+The remaining planned performance layer is compose-backed resource profiling for
+PostgreSQL, RabbitMQ, Redis, and API memory under the same k6 scenarios.
 
 ## Performance benchmarks
 
-This repository now includes a native Go benchmark for order creation and still defines the broader k6 benchmark methodology and acceptance targets.
+This repository now includes a native Go benchmark for order creation plus k6
+smoke, load, stress, and spike measurements against the local in-memory API
+process.
 
 - Benchmark plan: [benchmarks/baseline.md](./benchmarks/baseline.md)
 - Methodology notes: [docs/benchmarks/methodology.md](./docs/benchmarks/methodology.md)
 - Current phase status: [docs/benchmarks/results-status.md](./docs/benchmarks/results-status.md)
 - Results folder: [benchmarks/results/README.md](./benchmarks/results/README.md)
 - First native result: [benchmarks/results/2026-05-28-native-http-benchmark.md](./benchmarks/results/2026-05-28-native-http-benchmark.md)
+- k6 smoke result: [benchmarks/results/2026-05-28-k6-smoke.md](./benchmarks/results/2026-05-28-k6-smoke.md)
+- k6 load result: [benchmarks/results/2026-05-28-k6-load.md](./benchmarks/results/2026-05-28-k6-load.md)
+- k6 stress result: [benchmarks/results/2026-05-28-k6-stress.md](./benchmarks/results/2026-05-28-k6-stress.md)
+- k6 spike result: [benchmarks/results/2026-05-28-k6-spike.md](./benchmarks/results/2026-05-28-k6-spike.md)
 
-The first measured baseline is an in-process handler benchmark. Networked k6 latency percentiles are still pending.
+The current k6 numbers are not a substitute for a Docker Compose run with
+database, broker, cache, CPU, and memory telemetry enabled.
 
 ## Observability
 
@@ -277,6 +285,14 @@ Run k6 smoke against a running API:
 BASE_URL='http://localhost:8080' k6 run benchmarks/k6/smoke.js
 ```
 
+Run the longer k6 profiles against a running API:
+
+```sh
+BASE_URL='http://localhost:8080' k6 run benchmarks/k6/load.js
+BASE_URL='http://localhost:8080' k6 run benchmarks/k6/stress.js
+BASE_URL='http://localhost:8080' k6 run benchmarks/k6/spike.js
+```
+
 The GitHub Actions workflow at `.github/workflows/phase0-quality.yml` runs repository validation, `gofmt`, `go vet`, tests, PostgreSQL integration tests, benchmark smoke, markdown linting, OpenAPI validation, secret scanning, and Docker build validation.
 
 ## Failure scenarios
@@ -300,3 +316,4 @@ Runbook detail lives in [docs/runbooks/incident-response.md](./docs/runbooks/inc
 2. Phase 1: Go workspace bootstrap, HTTP API slice, in-memory outbox, request tests, authorization tests, native benchmark, and Docker build
 3. Phase 2: PostgreSQL schema, transactional outbox persistence, RabbitMQ relay, inbox deduplication, and failure simulations
 4. Phase 3: k6 scripts, dashboards, DLQ replay tooling, Redis rate limiting, and provider adapters
+5. Phase 4: compose-backed performance profiling, full trace export, and workerized fulfillment saga execution
