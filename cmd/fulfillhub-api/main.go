@@ -37,6 +37,9 @@ func main() {
 		addr = ":8080"
 	}
 
+	readinessChecks := map[string]api.ReadinessChecker{
+		"store": api.ReadinessCheckFunc(func(context.Context) error { return nil }),
+	}
 	store := commerce.Store(commerce.NewMemoryStore())
 	if databaseURL := os.Getenv("DATABASE_URL"); databaseURL != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -50,6 +53,7 @@ func main() {
 			fatal(logger, "run postgres migrations", err)
 		}
 		store = postgresStore
+		readinessChecks["store"] = api.ReadinessCheckFunc(postgresStore.DB().PingContext)
 	}
 
 	options := api.Options{
@@ -59,6 +63,7 @@ func main() {
 		OpsJWTIssuer:          os.Getenv("OPS_JWT_ISSUER"),
 		OpsJWTAudience:        os.Getenv("OPS_JWT_AUDIENCE"),
 		MetricsBearerToken:    os.Getenv("METRICS_BEARER_TOKEN"),
+		ReadinessChecks:       readinessChecks,
 	}
 	if outboxBacklog, ok := store.(api.OutboxBacklogProvider); ok {
 		options.OutboxBacklog = outboxBacklog
@@ -70,9 +75,16 @@ func main() {
 		if err != nil {
 			logger.Error("create rabbitmq queue metrics inspector", "error", err)
 			options.QueueMetrics = messaging.UnavailableQueueMetrics{Err: err}
+			options.ReadinessChecks["broker"] = api.ReadinessCheckFunc(func(context.Context) error {
+				return err
+			})
 		} else {
 			defer inspector.Close()
 			options.QueueMetrics = inspector
+			options.ReadinessChecks["broker"] = api.ReadinessCheckFunc(func(ctx context.Context) error {
+				_, err := inspector.QueueDepths(ctx)
+				return err
+			})
 		}
 	}
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
@@ -92,6 +104,9 @@ func main() {
 			fatal(logger, "load redis rate limit", err)
 		}
 		options.RateLimiter = ratelimit.NewRedisLimiter(client, limit, time.Minute)
+		options.ReadinessChecks["cache"] = api.ReadinessCheckFunc(func(ctx context.Context) error {
+			return client.Ping(ctx).Err()
+		})
 	}
 
 	service := commerce.NewService(store)

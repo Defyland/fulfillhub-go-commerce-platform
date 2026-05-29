@@ -42,7 +42,7 @@ The current executable slice includes:
 
 - Go module scaffolding
 - HTTP order creation, order lookup, shipment lookup, and cancellation handlers
-- health, readiness, and metrics endpoints
+- health, dependency readiness, and metrics endpoints
 - structured HTTP request logs plus OpenTelemetry HTTP, SQL, RabbitMQ publish, and RabbitMQ consume spans
 - shared tracing configuration with disabled, stdout, and OTLP/HTTP exporter modes
 - optional bearer protection for the Prometheus metrics endpoint

@@ -37,6 +37,58 @@ func TestHealthAndReadiness(t *testing.T) {
 	}
 }
 
+func TestReadinessReportsConfiguredDependencies(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		ReadinessChecks: map[string]ReadinessChecker{
+			"broker": ReadinessCheckFunc(func(context.Context) error { return nil }),
+			"cache":  ReadinessCheckFunc(func(context.Context) error { return nil }),
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	var body struct {
+		Status string            `json:"status"`
+		Checks map[string]string `json:"checks"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode readiness response: %v", err)
+	}
+	if body.Status != "ready" {
+		t.Fatalf("readiness status = %q, want ready", body.Status)
+	}
+	for _, name := range []string{"store", "broker", "cache"} {
+		if body.Checks[name] != "up" {
+			t.Fatalf("readiness check %s = %q, want up in %+v", name, body.Checks[name], body.Checks)
+		}
+	}
+}
+
+func TestReadinessFailsWhenDependencyIsUnavailable(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		ReadinessChecks: map[string]ReadinessChecker{
+			"broker": ReadinessCheckFunc(func(context.Context) error {
+				return errors.New("connection timeout")
+			}),
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusServiceUnavailable)
+	body := rec.Body.String()
+	for _, want := range []string{"dependency_unavailable", "One or more readiness checks failed.", "broker", "connection timeout"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("readiness failure body missing %q: %s", want, body)
+		}
+	}
+}
+
 func TestServerWritesStructuredRequestLog(t *testing.T) {
 	var logBuffer bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))

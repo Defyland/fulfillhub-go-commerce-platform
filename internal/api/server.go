@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -39,6 +40,7 @@ type Server struct {
 	queueMetrics  messaging.QueueMetricsProvider
 	outboxMetrics OutboxBacklogProvider
 	metricsToken  string
+	readiness     map[string]ReadinessChecker
 }
 
 type RateLimiter interface {
@@ -47,6 +49,16 @@ type RateLimiter interface {
 
 type OutboxBacklogProvider interface {
 	PendingOutboxCount(ctx context.Context) (int, error)
+}
+
+type ReadinessChecker interface {
+	CheckReadiness(ctx context.Context) error
+}
+
+type ReadinessCheckFunc func(context.Context) error
+
+func (f ReadinessCheckFunc) CheckReadiness(ctx context.Context) error {
+	return f(ctx)
 }
 
 type Options struct {
@@ -61,6 +73,7 @@ type Options struct {
 	QueueMetrics          messaging.QueueMetricsProvider
 	OutboxBacklog         OutboxBacklogProvider
 	MetricsBearerToken    string
+	ReadinessChecks       map[string]ReadinessChecker
 }
 
 type metrics struct {
@@ -142,6 +155,16 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 	if propagator == nil {
 		propagator = propagation.TraceContext{}
 	}
+	readiness := map[string]ReadinessChecker{
+		"store": ReadinessCheckFunc(func(context.Context) error { return nil }),
+	}
+	for name, check := range options.ReadinessChecks {
+		name = strings.TrimSpace(name)
+		if name == "" || check == nil {
+			continue
+		}
+		readiness[name] = check
+	}
 	return &Server{
 		service: service,
 		apiKeys: map[string]string{
@@ -158,6 +181,7 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 		queueMetrics:  options.QueueMetrics,
 		outboxMetrics: options.OutboxBacklog,
 		metricsToken:  strings.TrimSpace(options.MetricsBearerToken),
+		readiness:     readiness,
 	}
 }
 
@@ -213,15 +237,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"timestamp": time.Now().UTC(),
 		})
 	case r.Method == http.MethodGet && r.URL.Path == "/readyz":
-		writeJSON(w, http.StatusOK, map[string]any{
-			"status": "ready",
-			"checks": map[string]string{
-				"store":  "up",
-				"broker": "deferred",
-				"cache":  "deferred",
-			},
-			"timestamp": time.Now().UTC(),
-		})
+		s.writeReadiness(r.Context(), w, requestID, correlationID)
 	case r.Method == http.MethodGet && r.URL.Path == "/metrics":
 		if !s.authorizeMetrics(w, r, requestID, correlationID) {
 			return
@@ -619,6 +635,36 @@ func (s *Server) writeError(w http.ResponseWriter, status int, code, message str
 			CorrelationID: correlationID,
 			Timestamp:     &now,
 		},
+	})
+}
+
+func (s *Server) writeReadiness(ctx context.Context, w http.ResponseWriter, requestID, correlationID string) {
+	checks := make(map[string]string, len(s.readiness))
+	details := make([]errorDetail, 0)
+	names := make([]string, 0, len(s.readiness))
+	for name := range s.readiness {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		checkCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		err := s.readiness[name].CheckReadiness(checkCtx)
+		cancel()
+		if err != nil {
+			checks[name] = "down"
+			details = append(details, errorDetail{Field: name, Issue: err.Error()})
+			continue
+		}
+		checks[name] = "up"
+	}
+	if len(details) > 0 {
+		s.writeError(w, http.StatusServiceUnavailable, "dependency_unavailable", "One or more readiness checks failed.", true, details, requestID, correlationID)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":    "ready",
+		"checks":    checks,
+		"timestamp": time.Now().UTC(),
 	})
 }
 

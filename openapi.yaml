@@ -55,7 +55,7 @@ paths:
                   value:
                     status: ready
                     checks:
-                      database: up
+                      store: up
                       broker: up
                       cache: up
                     timestamp: '2026-05-28T20:15:00Z'
@@ -70,7 +70,7 @@ paths:
                   value:
                     error:
                       code: dependency_unavailable
-                      message: Readiness check failed because RabbitMQ is unavailable.
+                      message: One or more readiness checks failed.
                       retryable: true
                       details:
                         - field: broker
@@ -535,7 +535,7 @@ components:
           additionalProperties:
             type: string
           example:
-            database: up
+            store: up
             broker: up
             cache: up
         timestamp:

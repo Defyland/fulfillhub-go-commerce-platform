@@ -193,7 +193,7 @@ FulfillHub’s operational baseline includes:
 - Prometheus outbox backlog gauge for unpublished relay events
 - Prometheus RabbitMQ queue depth and consumer gauges when `RABBITMQ_URL` is configured
 - optional `/metrics` bearer protection via `METRICS_BEARER_TOKEN`
-- `/healthz` liveness and `/readyz` readiness endpoints
+- `/healthz` liveness and `/readyz` readiness endpoints for configured store, broker, and cache dependencies
 - `/metrics` for the current executable slice
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
 - dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
