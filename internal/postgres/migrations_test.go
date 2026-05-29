@@ -2,8 +2,10 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -822,6 +824,173 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		if !hasSpan(recorder.Ended(), name) {
 			t.Fatalf("expected span %q in postgres integration", name)
 		}
+	}
+}
+
+func TestPostgresInventoryReservationConcurrency(t *testing.T) {
+	databaseURL := os.Getenv("DATABASE_URL")
+	if databaseURL == "" {
+		t.Skip("DATABASE_URL not set")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	store, err := Open(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open postgres: %v", err)
+	}
+	defer store.Close()
+
+	if err := RunMigrations(ctx, store.DB()); err != nil {
+		t.Fatalf("run migrations: %v", err)
+	}
+
+	suffix := strings.ToLower(strings.ReplaceAll(t.Name(), "/", "_"))
+	merchantID := "mer_concurrency_" + suffix
+	warehouseID := "wh_concurrency_" + suffix
+	sku := "SKU-CONCURRENCY-" + suffix
+	if _, err := store.DB().ExecContext(ctx, `
+		INSERT INTO merchants (id, name)
+		VALUES ($1, 'Concurrency Merchant')
+		ON CONFLICT (id) DO NOTHING
+	`, merchantID); err != nil {
+		t.Fatalf("insert concurrency merchant: %v", err)
+	}
+	if _, err := store.DB().ExecContext(ctx, `
+		INSERT INTO warehouses (id, merchant_id, code, name, status)
+		VALUES ($1, $2, 'primary', 'Concurrency Warehouse', 'active')
+		ON CONFLICT (id) DO UPDATE
+		SET status = EXCLUDED.status
+	`, warehouseID, merchantID); err != nil {
+		t.Fatalf("insert concurrency warehouse: %v", err)
+	}
+	if _, err := store.DB().ExecContext(ctx, `
+		INSERT INTO inventory_items (warehouse_id, sku, available_quantity, reserved_quantity)
+		VALUES ($1, $2, 1, 0)
+		ON CONFLICT (warehouse_id, sku) DO UPDATE
+		SET available_quantity = 1,
+			reserved_quantity = 0
+	`, warehouseID, sku); err != nil {
+		t.Fatalf("seed concurrency inventory: %v", err)
+	}
+
+	now := time.Now().UTC()
+	orderIDs := []string{"ord_concurrency_a_" + suffix, "ord_concurrency_b_" + suffix}
+	for idx, orderID := range orderIDs {
+		order := postgresTestOrder(orderID, merchantID, "external_concurrency_"+suffix+"_"+string(rune('a'+idx)), sku, now)
+		event := commerce.OutboxEvent{
+			MessageID:     "msg_created_" + orderID,
+			CorrelationID: "cor_concurrency",
+			CausationID:   "msg_created_" + orderID,
+			EventType:     "order.created",
+			OrderID:       orderID,
+			MerchantID:    merchantID,
+			OccurredAt:    now,
+		}
+		audit := commerce.AuditLog{
+			MerchantID:    merchantID,
+			OrderID:       orderID,
+			ActorType:     "merchant",
+			ActorID:       merchantID,
+			Action:        "order.create",
+			CorrelationID: event.CorrelationID,
+			CreatedAt:     now,
+		}
+		if _, _, err := store.InsertOrder(ctx, merchantID, "idem_concurrency_"+orderID, order, event, audit); err != nil {
+			t.Fatalf("insert concurrency order %s: %v", orderID, err)
+		}
+	}
+
+	var wg sync.WaitGroup
+	results := make(chan error, len(orderIDs))
+	for _, orderID := range orderIDs {
+		orderID := orderID
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			source := commerce.OutboxEvent{
+				MessageID:     "msg_created_" + orderID,
+				CorrelationID: "cor_concurrency",
+				CausationID:   "msg_created_" + orderID,
+				EventType:     "order.created",
+				OrderID:       orderID,
+				MerchantID:    merchantID,
+				OccurredAt:    now,
+			}
+			next := commerce.OutboxEvent{
+				MessageID:     "msg_reserved_" + orderID,
+				CorrelationID: source.CorrelationID,
+				CausationID:   source.MessageID,
+				EventType:     "inventory.reserved",
+				OrderID:       orderID,
+				MerchantID:    merchantID,
+				OccurredAt:    now.Add(time.Second),
+			}
+			results <- store.RecordInventoryReserved(ctx, source, next, commerce.AuditLog{
+				MerchantID:    merchantID,
+				OrderID:       orderID,
+				ActorType:     "system",
+				ActorID:       "fulfillment-worker",
+				Action:        "inventory.reserved",
+				CorrelationID: source.CorrelationID,
+				CreatedAt:     next.OccurredAt,
+			})
+		}()
+	}
+	wg.Wait()
+	close(results)
+
+	successes := 0
+	stockFailures := 0
+	for err := range results {
+		switch {
+		case err == nil:
+			successes++
+		case errors.Is(err, commerce.ErrInsufficientStock):
+			stockFailures++
+		default:
+			t.Fatalf("unexpected reservation error: %v", err)
+		}
+	}
+	if successes != 1 || stockFailures != 1 {
+		t.Fatalf("reservation outcomes = successes:%d stockFailures:%d, want 1/1", successes, stockFailures)
+	}
+
+	var available, reserved int
+	if err := store.DB().QueryRowContext(ctx, `
+		SELECT available_quantity, reserved_quantity
+		FROM inventory_items
+		WHERE warehouse_id = $1 AND sku = $2
+	`, warehouseID, sku).Scan(&available, &reserved); err != nil {
+		t.Fatalf("load inventory after concurrency test: %v", err)
+	}
+	if available != 0 || reserved != 1 {
+		t.Fatalf("inventory = available:%d reserved:%d, want 0/1", available, reserved)
+	}
+}
+
+func postgresTestOrder(orderID, merchantID, externalID, sku string, now time.Time) *commerce.Order {
+	return &commerce.Order{
+		OrderID:         orderID,
+		MerchantID:      merchantID,
+		ExternalOrderID: externalID,
+		Status:          commerce.StatusPendingFulfillment,
+		Currency:        "USD",
+		Totals: commerce.OrderTotals{
+			Subtotal: commerce.Money{Amount: 1000, Currency: "USD"},
+			Shipping: commerce.Money{Amount: 0, Currency: "USD"},
+			Total:    commerce.Money{Amount: 1000, Currency: "USD"},
+		},
+		Items: []commerce.OrderItem{{
+			SKU:               sku,
+			Quantity:          1,
+			UnitPrice:         commerce.Money{Amount: 1000, Currency: "USD"},
+			ReservationStatus: "pending",
+		}},
+		Payment:   &commerce.Payment{Provider: "stripe", Status: "pending_authorization"},
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 
