@@ -1,9 +1,9 @@
 # Benchmark Results Status
 
 The repository now includes empirical native Go and k6 smoke, load, stress, and
-spike benchmark results for the executable HTTP slice, plus a Compose-backed
-smoke profile for the full PostgreSQL, RabbitMQ, Redis, relay, and worker
-runtime.
+spike benchmark results for the executable HTTP slice, plus Compose-backed
+smoke, load, stress, and spike profiles for the full PostgreSQL, RabbitMQ,
+Redis, relay, and worker runtime.
 
 Current results:
 
@@ -13,6 +13,7 @@ Current results:
 - [2026-05-28 k6 stress test](../../benchmarks/results/2026-05-28-k6-stress.md)
 - [2026-05-28 k6 spike test](../../benchmarks/results/2026-05-28-k6-spike.md)
 - [2026-05-29 Compose smoke profile](../../benchmarks/results/2026-05-29-compose-smoke.md)
+- [2026-05-29 Compose load, stress, and spike profile](../../benchmarks/results/2026-05-29-compose-load-stress-spike.md)
 
 ## Latest k6 snapshot
 
@@ -28,15 +29,13 @@ Current results:
 | Scenario | p50 | p95 | p99 | Throughput | Error rate | Async drain |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | Smoke | 7.91 ms | 23.92 ms | 192.44 ms | 4.929614 req/s | 0.00% | Outbox `0`, RabbitMQ ready `0` |
+| Load | 3.29 ms | 20.22 ms | 58.16 ms | 49.555333 req/s | 0.00% | Outbox `0`, RabbitMQ ready `0`, unacked `0` |
+| Stress | 4.05 ms | 60.43 ms | 323.86 ms | 110.137798 req/s | 0.05% | Outbox `0`, RabbitMQ ready `0`, unacked `0` |
+| Spike | 3.72 ms | 42.69 ms | 187.62 ms | 141.866448 req/s | 0.03% | Outbox `0`, RabbitMQ ready `0`, unacked `0` |
 
-## Remaining performance gap
+## Compose Profiling Notes
 
-The committed Compose smoke profile now measures the full local runtime under
-container limits. Compose-backed load, stress, and spike runs are still required
-to measure sustained PostgreSQL CPU and connection pool behavior, RabbitMQ queue
-depth and consumer lag, Redis limiter behavior, and API memory profile under
-higher traffic.
-
-The reproducible harness for that run is now versioned at
-[`scripts/run_compose_profile.sh`](../../scripts/run_compose_profile.sh), with
-usage notes in [compose-profiling.md](./compose-profiling.md).
+The committed Compose profiles now measure the full local runtime under
+container limits. The load/stress/spike run ended with PostgreSQL at `373.1
+MiB`, RabbitMQ at `471 MiB`, API at `36.95 MiB`, Redis at `1.38M` used memory
+and `4.15M` peak memory, and PostgreSQL reporting `0` rollbacks.

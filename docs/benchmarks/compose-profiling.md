@@ -46,12 +46,12 @@ with:
 The harness is versioned, syntax-validated, and has a committed Compose smoke
 profile under
 [`benchmarks/results/compose-2026-05-29T03-42-51Z`](../../benchmarks/results/compose-2026-05-29T03-42-51Z/).
-Measured Compose load, stress, and spike runs still require an intentional
-long-running local Docker session.
+Measured Compose load, stress, and spike profiles are committed under
+[`benchmarks/results/compose-2026-05-29T06-25-20Z`](../../benchmarks/results/compose-2026-05-29T06-25-20Z/).
 
 ## CI Coverage
 
 `.github/workflows/phase0-quality.yml` runs a Compose smoke profile with the
 `smoke` scenario on GitHub-hosted Linux runners and uploads the captured
-profiling artifacts. Longer load, stress, and spike profiles should still be
-run intentionally and committed under `benchmarks/results/`.
+profiling artifacts. Longer load, stress, and spike profiles are intentionally
+local because they take substantially longer than the CI smoke gate.

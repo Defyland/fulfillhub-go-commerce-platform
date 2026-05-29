@@ -46,4 +46,6 @@
 ## Known Gaps
 
 - `/metrics` is unauthenticated in the local slice and should be network-restricted in production.
-- Compose-backed load, stress, and spike runs still need CPU, memory, and Redis limiter telemetry.
+- Compose-backed load, stress, and spike telemetry exists for local profiling;
+  production deployment would still need authenticated metrics and network
+  policy around the observability endpoints.

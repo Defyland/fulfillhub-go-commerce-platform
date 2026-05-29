@@ -1,0 +1,5 @@
+  datname   | numbackends | xact_commit | xact_rollback | blks_read | blks_hit 
+------------+-------------+-------------+---------------+-----------+----------
+ fulfillhub |           9 |          60 |             0 |        72 |     2386
+(1 row)
+

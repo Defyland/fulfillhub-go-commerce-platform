@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed load, stress, and spike profiling remain the main pending performance artifacts.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
 
 ## What is this product?
 
@@ -139,9 +139,9 @@ The current implementation includes Go tests for:
 - RabbitMQ consumer trace propagation, inbox deduplication, and ack/nack behavior
 - fulfillment worker happy-path progression through durable inventory, payment, shipment, and order completion projections
 
-The remaining planned performance layer is compose-backed load, stress, and
-spike resource profiling for PostgreSQL, RabbitMQ, Redis, and API memory under
-the same k6 scenarios.
+The performance layer includes compose-backed smoke, load, stress, and spike
+resource profiling for PostgreSQL, RabbitMQ, Redis, RabbitMQ queue drain, and
+API memory under the same k6 scenarios.
 
 ## Performance benchmarks
 
@@ -160,10 +160,7 @@ process.
 - k6 stress result: [benchmarks/results/2026-05-28-k6-stress.md](./benchmarks/results/2026-05-28-k6-stress.md)
 - k6 spike result: [benchmarks/results/2026-05-28-k6-spike.md](./benchmarks/results/2026-05-28-k6-spike.md)
 - Compose smoke result: [benchmarks/results/2026-05-29-compose-smoke.md](./benchmarks/results/2026-05-29-compose-smoke.md)
-
-The current in-memory load, stress, and spike numbers are not a substitute for
-Docker Compose runs with database, broker, cache, CPU, and memory telemetry
-enabled.
+- Compose load/stress/spike result: [benchmarks/results/2026-05-29-compose-load-stress-spike.md](./benchmarks/results/2026-05-29-compose-load-stress-spike.md)
 
 ## Observability
 
@@ -184,9 +181,9 @@ FulfillHub’s operational baseline includes:
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
 - dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
 
-Compose-backed smoke resource measurements are included; load, stress, and
-spike resource measurements remain the next observability expansion after the
-HTTP, SQL, RabbitMQ, publish-path, and consume-path runtime baseline.
+Compose-backed smoke, load, stress, and spike resource measurements are
+included alongside the HTTP, SQL, RabbitMQ, publish-path, and consume-path
+runtime baseline.
 
 ## Security considerations
 

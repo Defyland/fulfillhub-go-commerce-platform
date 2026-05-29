@@ -1,0 +1,14 @@
+CONTAINER ID   NAME                                                     CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O       PIDS
+6d4e7dd79d72   fulfillhub-go-commerce-platform-api-1                    0.00%     3.754MiB / 7.654GiB   0.05%     7.59kB / 7.91kB   0B / 0B         5
+334c24cac8fa   fulfillhub-go-commerce-platform-compensation-worker-1    0.00%     5.031MiB / 7.654GiB   0.06%     7.3kB / 6.78kB    0B / 0B         8
+fc7af0970297   fulfillhub-go-commerce-platform-grafana-1                1.60%     77.75MiB / 7.654GiB   0.99%     25kB / 4.76kB     2.97MB / 23MB   16
+a1a12e0e0270   fulfillhub-go-commerce-platform-inventory-worker-1       0.00%     5.008MiB / 7.654GiB   0.06%     7.17kB / 6.78kB   0B / 0B         8
+eb349c67b5cd   fulfillhub-go-commerce-platform-notifications-worker-1   0.00%     5.027MiB / 7.654GiB   0.06%     7kB / 6.78kB      0B / 0B         8
+3ee528b861c6   fulfillhub-go-commerce-platform-orders-finalizer-1       0.00%     5.023MiB / 7.654GiB   0.06%     6.66kB / 6.77kB   0B / 0B         8
+1001714330be   fulfillhub-go-commerce-platform-outbox-relay-1           0.87%     5.02MiB / 7.654GiB    0.06%     13.3kB / 12.4kB   0B / 0B         8
+786cfe71feb3   fulfillhub-go-commerce-platform-payments-worker-1        0.00%     3.27MiB / 7.654GiB    0.04%     8.56kB / 13.6kB   0B / 0B         8
+2f332621c239   fulfillhub-go-commerce-platform-postgres-1               0.62%     37.67MiB / 7.654GiB   0.48%     39.9kB / 29.9kB   0B / 53.2MB     14
+da2f698c86bb   fulfillhub-go-commerce-platform-prometheus-1             0.00%     21.09MiB / 7.654GiB   0.27%     872B / 0B         1.45MB / 0B     14
+2fb254197e2d   fulfillhub-go-commerce-platform-rabbitmq-1               2.61%     179.3MiB / 7.654GiB   2.29%     30.6kB / 22.6kB   0B / 655kB      44
+6fde66e1eed7   fulfillhub-go-commerce-platform-redis-1                  0.89%     9.297MiB / 7.654GiB   0.12%     2.87kB / 541B     0B / 0B         6
+f4c4762549e3   fulfillhub-go-commerce-platform-shipments-worker-1       0.00%     5.035MiB / 7.654GiB   0.06%     6.95kB / 6.77kB   0B / 0B         8

@@ -1,0 +1,14 @@
+CONTAINER ID   NAME                                                     CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O         PIDS
+6d4e7dd79d72   fulfillhub-go-commerce-platform-api-1                    0.00%     16.52MiB / 7.654GiB   0.21%     91.5MB / 162MB    0B / 0B           21
+334c24cac8fa   fulfillhub-go-commerce-platform-compensation-worker-1    0.07%     5.031MiB / 7.654GiB   0.06%     37.1kB / 38.1kB   0B / 0B           8
+fc7af0970297   fulfillhub-go-commerce-platform-grafana-1                0.15%     82.68MiB / 7.654GiB   1.05%     32.2kB / 8.35kB   2.97MB / 23.2MB   16
+a1a12e0e0270   fulfillhub-go-commerce-platform-inventory-worker-1       0.06%     10.86MiB / 7.654GiB   0.14%     65.9MB / 99.3MB   0B / 0B           12
+eb349c67b5cd   fulfillhub-go-commerce-platform-notifications-worker-1   0.04%     10.85MiB / 7.654GiB   0.14%     112MB / 81.8MB    0B / 0B           13
+3ee528b861c6   fulfillhub-go-commerce-platform-orders-finalizer-1       0.07%     12.31MiB / 7.654GiB   0.16%     116MB / 101MB     0B / 0B           13
+1001714330be   fulfillhub-go-commerce-platform-outbox-relay-1           1.23%     11.29MiB / 7.654GiB   0.14%     71.2MB / 173MB    0B / 0B           12
+786cfe71feb3   fulfillhub-go-commerce-platform-payments-worker-1        0.15%     12.37MiB / 7.654GiB   0.16%     66.1MB / 102MB    0B / 0B           12
+2f332621c239   fulfillhub-go-commerce-platform-postgres-1               1.35%     199.7MiB / 7.654GiB   2.55%     657MB / 453MB     8.19kB / 7.43GB   15
+da2f698c86bb   fulfillhub-go-commerce-platform-prometheus-1             0.00%     25.07MiB / 7.654GiB   0.32%     135kB / 25.6kB    1.55MB / 139kB    14
+2fb254197e2d   fulfillhub-go-commerce-platform-rabbitmq-1               0.60%     219.7MiB / 7.654GiB   2.80%     143MB / 146MB     0B / 183MB        118
+6fde66e1eed7   fulfillhub-go-commerce-platform-redis-1                  0.83%     9.727MiB / 7.654GiB   0.12%     14.2MB / 3.26MB   16.4kB / 16.4kB   6
+f4c4762549e3   fulfillhub-go-commerce-platform-shipments-worker-1       0.04%     13.03MiB / 7.654GiB   0.17%     115MB / 117MB     0B / 0B           13

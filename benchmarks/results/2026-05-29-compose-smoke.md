@@ -56,6 +56,5 @@ Raw artifacts are stored under
 
 ## Notes
 
-This closes the first Compose-backed empirical performance artifact. Longer
-Compose load, stress, and spike profiles remain required for saturation and
-burst behavior.
+This closes the first Compose-backed empirical performance artifact. A later
+Compose load, stress, and spike profile covers sustained and burst behavior.

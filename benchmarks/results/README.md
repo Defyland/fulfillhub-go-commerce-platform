@@ -8,6 +8,7 @@ Measured benchmark artifacts:
 - [2026-05-28 k6 stress test](./2026-05-28-k6-stress.md)
 - [2026-05-28 k6 spike test](./2026-05-28-k6-spike.md)
 - [2026-05-29 Compose smoke profile](./2026-05-29-compose-smoke.md)
+- [2026-05-29 Compose load, stress, and spike profile](./2026-05-29-compose-load-stress-spike.md)
 
 Raw k6 summary exports:
 
@@ -18,8 +19,4 @@ Raw k6 summary exports:
 Compose profiling artifacts:
 
 - [2026-05-29 Compose smoke raw artifacts](./compose-2026-05-29T03-42-51Z/)
-
-The next compose-backed performance run should use
-[`../../scripts/run_compose_profile.sh`](../../scripts/run_compose_profile.sh)
-to add load, stress, and spike PostgreSQL CPU, connection pool, RabbitMQ queue
-depth, consumer lag, Redis limiter, and API memory profile notes.
+- [2026-05-29 Compose load/stress/spike raw artifacts](./compose-2026-05-29T06-25-20Z/)
