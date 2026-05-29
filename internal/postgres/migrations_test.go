@@ -96,6 +96,25 @@ func TestMigrationsAddOutboxCausation(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddInventoryCatalog(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/007_inventory_catalog.sql")
+	if err != nil {
+		t.Fatalf("read inventory catalog migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{
+		"CREATE TABLE IF NOT EXISTS warehouses",
+		"CREATE TABLE IF NOT EXISTS inventory_items",
+		"REFERENCES merchants(id)",
+		"UNIQUE (warehouse_id, sku)",
+		"idx_inventory_items_sku",
+	} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("inventory catalog migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
