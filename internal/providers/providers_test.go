@@ -8,11 +8,11 @@ import (
 func TestFakePaymentProviderAuthorizesAndVoids(t *testing.T) {
 	provider := FakePaymentProvider{}
 	auth, err := provider.Authorize(context.Background(), PaymentRequest{
-		OrderID:      "ord_1",
-		MerchantID:   "mer_1",
-		Amount:       20100,
-		Currency:     "USD",
-		PaymentToken: "tok_visa",
+		OrderID:              "ord_1",
+		MerchantID:           "mer_1",
+		Amount:               20100,
+		Currency:             "USD",
+		PaymentCredentialRef: "paycred_visa",
 	})
 	if err != nil {
 		t.Fatalf("Authorize returned error: %v", err)

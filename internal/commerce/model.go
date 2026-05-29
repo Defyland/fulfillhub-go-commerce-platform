@@ -73,6 +73,7 @@ type Payment struct {
 	Provider        string `json:"provider"`
 	Status          string `json:"status"`
 	AuthorizationID string `json:"authorization_id,omitempty"`
+	CredentialRef   string `json:"-"`
 }
 
 type Shipment struct {
@@ -100,17 +101,18 @@ type ShipmentRecord struct {
 }
 
 type Order struct {
-	OrderID         string      `json:"order_id"`
-	MerchantID      string      `json:"merchant_id"`
-	ExternalOrderID string      `json:"external_order_id"`
-	Status          OrderStatus `json:"status"`
-	Currency        string      `json:"currency"`
-	Totals          OrderTotals `json:"totals"`
-	Items           []OrderItem `json:"items"`
-	Payment         *Payment    `json:"payment,omitempty"`
-	Shipment        *Shipment   `json:"shipment,omitempty"`
-	CreatedAt       time.Time   `json:"created_at"`
-	UpdatedAt       time.Time   `json:"updated_at"`
+	OrderID            string      `json:"order_id"`
+	MerchantID         string      `json:"merchant_id"`
+	ExternalOrderID    string      `json:"external_order_id"`
+	Status             OrderStatus `json:"status"`
+	Currency           string      `json:"currency"`
+	Totals             OrderTotals `json:"totals"`
+	Items              []OrderItem `json:"items"`
+	Payment            *Payment    `json:"payment,omitempty"`
+	Shipment           *Shipment   `json:"shipment,omitempty"`
+	ShippingAddressRef string      `json:"-"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
 }
 
 type OutboxEvent struct {

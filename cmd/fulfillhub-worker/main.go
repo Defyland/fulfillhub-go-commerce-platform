@@ -13,6 +13,7 @@ import (
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/observability"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/providers"
 )
 
 type settings struct {
@@ -62,6 +63,14 @@ func main() {
 	handler, err := fulfillment.HandlerForQueue(cfg.queue, fulfillment.Dependencies{
 		Projector: store,
 		Orders:    store,
+		PaymentAuthorizer: fulfillment.ProviderPaymentAuthorizer{
+			Orders:   store,
+			Provider: providers.FakePaymentProvider{},
+		},
+		ShipmentCreator: fulfillment.ProviderShipmentCreator{
+			Orders:   store,
+			Provider: providers.FakeShipmentProvider{},
+		},
 	})
 	if err != nil {
 		fatal(logger, "create worker handler", err)

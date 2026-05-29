@@ -83,11 +83,11 @@ func (s *Store) InsertOrder(ctx context.Context, merchantID, idempotencyKey stri
 			order_id, merchant_id, external_order_id, status, currency,
 			subtotal_amount, shipping_amount, total_amount,
 			payment_provider, payment_status, payment_authorization_id,
-			created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+			payment_credential_ref, shipping_address_ref, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 	`, order.OrderID, merchantID, order.ExternalOrderID, order.Status, order.Currency,
 		order.Totals.Subtotal.Amount, order.Totals.Shipping.Amount, order.Totals.Total.Amount,
-		nullablePaymentProvider(order), nullablePaymentStatus(order), nullablePaymentAuthorization(order),
+		nullablePaymentProvider(order), nullablePaymentStatus(order), nullablePaymentAuthorization(order), nullablePaymentCredentialRef(order), nullableString(order.ShippingAddressRef),
 		order.CreatedAt, order.UpdatedAt); err != nil {
 		if isUniqueViolation(err) {
 			return nil, false, commerce.ErrDuplicateOrder
@@ -1079,18 +1079,18 @@ func orderItemsForReservation(ctx context.Context, q queryer, orderID string) ([
 func getOrderTx(ctx context.Context, q queryer, orderID string) (*commerce.Order, error) {
 	var order commerce.Order
 	var subtotalAmount, shippingAmount, totalAmount int64
-	var paymentProvider, paymentStatus, paymentAuthorization sql.NullString
+	var paymentProvider, paymentStatus, paymentAuthorization, paymentCredentialRef, shippingAddressRef sql.NullString
 
 	if err := q.QueryRowContext(ctx, `
 		SELECT order_id, merchant_id, external_order_id, status, currency,
 			subtotal_amount, shipping_amount, total_amount,
-			payment_provider, payment_status, payment_authorization_id,
+			payment_provider, payment_status, payment_authorization_id, payment_credential_ref, shipping_address_ref,
 			created_at, updated_at
 		FROM orders
 		WHERE order_id = $1
 	`, orderID).Scan(&order.OrderID, &order.MerchantID, &order.ExternalOrderID, &order.Status, &order.Currency,
 		&subtotalAmount, &shippingAmount, &totalAmount,
-		&paymentProvider, &paymentStatus, &paymentAuthorization,
+		&paymentProvider, &paymentStatus, &paymentAuthorization, &paymentCredentialRef, &shippingAddressRef,
 		&order.CreatedAt, &order.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, commerce.ErrNotFound
@@ -1108,8 +1108,10 @@ func getOrderTx(ctx context.Context, q queryer, orderID string) (*commerce.Order
 			Provider:        paymentProvider.String,
 			Status:          paymentStatus.String,
 			AuthorizationID: paymentAuthorization.String,
+			CredentialRef:   paymentCredentialRef.String,
 		}
 	}
+	order.ShippingAddressRef = shippingAddressRef.String
 
 	rows, err := q.QueryContext(ctx, `
 		SELECT sku, quantity, unit_price_amount, unit_price_currency, reservation_status
@@ -1270,6 +1272,13 @@ func nullablePaymentAuthorization(order *commerce.Order) sql.NullString {
 		return sql.NullString{}
 	}
 	return sql.NullString{String: order.Payment.AuthorizationID, Valid: true}
+}
+
+func nullablePaymentCredentialRef(order *commerce.Order) sql.NullString {
+	if order.Payment == nil || order.Payment.CredentialRef == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: order.Payment.CredentialRef, Valid: true}
 }
 
 func isUniqueViolation(err error) bool {

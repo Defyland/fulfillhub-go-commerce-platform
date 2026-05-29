@@ -2,6 +2,8 @@ package commerce
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strings"
@@ -84,11 +86,13 @@ func (s *Service) CreateOrderContext(ctx context.Context, merchantID, idempotenc
 		},
 		Items: items,
 		Payment: &Payment{
-			Provider: req.PaymentMethod.Provider,
-			Status:   "pending_authorization",
+			Provider:      req.PaymentMethod.Provider,
+			Status:        "pending_authorization",
+			CredentialRef: opaqueReference("paycred", req.PaymentMethod.PaymentToken),
 		},
-		CreatedAt: now,
-		UpdatedAt: now,
+		ShippingAddressRef: opaqueReference("addr", addressFingerprint(req.ShippingAddress)),
+		CreatedAt:          now,
+		UpdatedAt:          now,
 	}
 
 	messageID := s.nextID("msg")
@@ -180,6 +184,23 @@ func (s *Service) AuditLogs() []AuditLog {
 
 func (s *Service) nextID(prefix string) string {
 	return fmt.Sprintf("%s_%012d", prefix, s.counter.Add(1))
+}
+
+func opaqueReference(prefix, value string) string {
+	sum := sha256.Sum256([]byte(strings.TrimSpace(value)))
+	return fmt.Sprintf("%s_%s", prefix, hex.EncodeToString(sum[:])[:24])
+}
+
+func addressFingerprint(address Address) string {
+	parts := []string{
+		address.Line1,
+		address.Line2,
+		address.City,
+		address.State,
+		address.PostalCode,
+		address.Country,
+	}
+	return strings.ToLower(strings.Join(parts, "|"))
 }
 
 func validateCreateOrder(merchantID, idempotencyKey string, req CreateOrderRequest) error {

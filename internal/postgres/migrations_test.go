@@ -203,6 +203,23 @@ func TestMigrationsConstrainOrderStatuses(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddOrderProviderReferences(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/012_order_provider_references.sql")
+	if err != nil {
+		t.Fatalf("read order provider references migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{
+		"payment_credential_ref TEXT",
+		"shipping_address_ref TEXT",
+		"not raw payment tokens",
+	} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("order provider references migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
