@@ -67,6 +67,9 @@ history.
 - Added saga/business metrics, concurrent inventory reservation coverage,
   benchmark budget validation, Compose saga smoke, SBOM generation, and Trivy
   supply-chain scans.
+- Added production-readiness evidence: controlled migration binary, Kubernetes
+  deployment blueprint, rollout/rollback runbook, and signed provider webhook
+  verification with replay protection.
 
 ## Remaining recommendations
 
@@ -77,3 +80,6 @@ history.
   while preserving the opaque-reference contract.
 - Keep benchmark artifacts current when meaningful runtime behavior changes,
   especially if queue topology, readiness checks, or worker branching changes.
+- For a real production launch, attach the blueprint to cloud-specific
+  infrastructure, managed secret storage, signed image publishing, PITR restore
+  drills, and real provider adapters.

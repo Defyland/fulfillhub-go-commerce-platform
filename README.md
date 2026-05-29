@@ -288,6 +288,15 @@ Migrations seed local demo inventory for the built-in demo API-key merchants so
 the Compose worker stack can exercise the happy path without a separate catalog
 admin API.
 
+For controlled deploys, run migrations as a separate release step instead of
+letting application pods own rollout sequencing:
+
+```sh
+DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
+MIGRATION_TIMEOUT='60s' \
+  go run ./cmd/fulfillhub-migrate
+```
+
 To enable Redis-backed write rate limiting, provide `REDIS_URL`. The default
 limit is `120` writes per merchant per minute and can be changed with
 `RATE_LIMIT_PER_MINUTE`.
@@ -418,6 +427,13 @@ BASE_URL='http://localhost:8080' k6 run benchmarks/k6/spike.js
 
 The GitHub Actions workflow at `.github/workflows/phase0-quality.yml` runs repository validation, `gofmt`, `go vet`, tests, PostgreSQL integration tests, benchmark smoke, markdown linting, OpenAPI validation, secret scanning, and Docker build validation.
 
+Production deployment and operations artifacts are captured in
+[docs/production-readiness.md](./docs/production-readiness.md) and
+[deployments/kubernetes/base](./deployments/kubernetes/base). The manifests are
+a blueprint for real environments: image tags, managed PostgreSQL/RabbitMQ/Redis
+endpoints, External Secrets provider, ingress, and cloud IAM bindings must be
+supplied by the target platform.
+
 ## Failure scenarios
 
 The implementation is expected to handle, test, and document at least these scenarios:
@@ -440,3 +456,6 @@ Runbook detail lives in [docs/runbooks/incident-response.md](./docs/runbooks/inc
 3. Phase 2: PostgreSQL schema, transactional outbox persistence, RabbitMQ relay, inbox deduplication, and failure simulations
 4. Phase 3: k6 scripts, dashboards, DLQ replay tooling, Redis rate limiting, and provider adapters
 5. Phase 4: workerized fulfillment happy path, full trace propagation, and compose-backed performance profiling
+6. Production-readiness pack: deployment blueprint, controlled migrations,
+   alerting/runbooks, secrets model, data protection policy, and provider
+   webhook hardening

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fulfillhub
+  labels:
+    app.kubernetes.io/name: fulfillhub
+    app.kubernetes.io/part-of: fulfillhub-commerce

@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fulfillhub-outbox-relay
+  namespace: fulfillhub
+  labels:
+    app.kubernetes.io/name: fulfillhub-outbox-relay
+    app.kubernetes.io/part-of: fulfillhub-commerce
+spec:
+  replicas: 2
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fulfillhub-outbox-relay
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fulfillhub-outbox-relay
+        app.kubernetes.io/part-of: fulfillhub-commerce
+    spec:
+      serviceAccountName: fulfillhub-runtime
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: outbox-relay
+          image: ghcr.io/defyland/fulfillhub-go-commerce-platform:sha-placeholder
+          imagePullPolicy: IfNotPresent
+          command:
+            - /app/fulfillhub-outbox-relay
+          envFrom:
+            - configMapRef:
+                name: fulfillhub-config
+            - secretRef:
+                name: fulfillhub-runtime
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
