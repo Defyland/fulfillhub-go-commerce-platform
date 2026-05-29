@@ -116,6 +116,7 @@ docs/adr/0001-modular-monolith-first.md
 docs/adr/0002-rabbitmq-outbox-inbox.md
 docs/adr/0003-authentication-and-authorization.md
 docs/adr/0004-local-otel-collector.md
+docs/adr/0005-order-state-machine-provider-boundaries.md
 benchmarks/baseline.md
 benchmarks/k6/smoke.js
 benchmarks/k6/load.js

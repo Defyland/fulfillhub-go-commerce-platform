@@ -46,6 +46,9 @@ history.
   provider rollout would still need a stronger payment-token strategy, such as
   durable token references or vault-backed indirection, before wiring external
   providers directly into async workers.
+- Order status transitions were previously implicit across service, handlers,
+  and store methods. That made invalid event ordering harder to detect and left
+  the database without a lifecycle invariant.
 
 ## Changes applied in this review
 
@@ -57,13 +60,20 @@ history.
   cannot silently disappear.
 - Preserved the previously added `govulncheck` gate and dependency/toolchain
   upgrades as part of the senior-quality baseline.
+- Added a formal order state machine, applied it to in-memory and Postgres
+  writes, and backed it with a Postgres status `CHECK` constraint.
+- Added opaque payment/address provider references and wired worker adapters
+  through the fake payment and shipment providers.
+- Added saga/business metrics, concurrent inventory reservation coverage,
+  benchmark budget validation, Compose saga smoke, SBOM generation, and Trivy
+  supply-chain scans.
 
 ## Remaining recommendations
 
 - Extend the spec-consistency tests to other high-risk invariants if more order
   states or worker branches are introduced.
 - If the project evolves from fake adapters to real payment or shipment
-  providers, treat credential and token lifecycle design as an architectural
-  milestone, not as a small integration task.
+  providers, move tokenization to a dedicated vault or PSP-owned token source
+  while preserving the opaque-reference contract.
 - Keep benchmark artifacts current when meaningful runtime behavior changes,
   especially if queue topology, readiness checks, or worker branching changes.
