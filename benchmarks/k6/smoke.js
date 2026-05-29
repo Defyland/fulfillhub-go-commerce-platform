@@ -8,6 +8,7 @@ export const options = {
     http_req_failed: ['rate<0.01'],
     http_req_duration: ['p(95)<250'],
   },
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(50)', 'p(90)', 'p(95)', 'p(99)'],
 };
 
 const baseUrl = __ENV.BASE_URL || 'http://localhost:8080';

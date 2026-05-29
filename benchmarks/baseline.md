@@ -20,6 +20,7 @@ The k6 scripts live under `benchmarks/k6/`.
 | Benchmark | Result | Scope |
 | --- | --- | --- |
 | `BenchmarkCreateOrder-10` | 15291 ns/op | In-process Go HTTP handler via `httptest` |
+| k6 smoke | p95 4.86 ms, p99 47.87 ms, 0.00% errors | 5 VUs for 1 minute against in-memory API |
 
 ## Measured metrics
 
@@ -42,7 +43,8 @@ Every benchmark run must record:
 
 ## Exit criteria for the next performance phase
 
-- k6 smoke result committed under `benchmarks/results/`
 - k6 load result committed under `benchmarks/results/`
+- k6 stress result committed under `benchmarks/results/`
+- k6 spike result committed under `benchmarks/results/`
 - Result summary mirrored into `docs/benchmarks/`
 - Reproducible k6 command line recorded in repository docs

@@ -3,6 +3,7 @@
 Measured benchmark artifacts:
 
 - [2026-05-28 native HTTP benchmark](./2026-05-28-native-http-benchmark.md)
+- [2026-05-28 k6 smoke test](./2026-05-28-k6-smoke.md)
 
 Future k6 benchmark runs should add:
 
