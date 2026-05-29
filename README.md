@@ -134,6 +134,7 @@ The current implementation includes Go tests for:
 - operations token access
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
+- RabbitMQ consumer trace propagation, inbox deduplication, and ack/nack behavior
 
 The remaining planned performance layer is compose-backed resource profiling for
 PostgreSQL, RabbitMQ, Redis, and API memory under the same k6 scenarios.
@@ -166,6 +167,7 @@ FulfillHub’s operational baseline includes:
 - OpenTelemetry HTTP spans with W3C `traceparent` propagation
 - OpenTelemetry PostgreSQL spans for order, outbox, inbox, and audit persistence
 - OpenTelemetry outbox relay and RabbitMQ publish spans with AMQP `traceparent` headers
+- OpenTelemetry RabbitMQ consume spans with inbox idempotency and explicit acknowledgement outcomes
 - optional stdout trace export via `OTEL_TRACES_EXPORTER=stdout`
 - Prometheus-compatible request and error counters
 - `/healthz` liveness and `/readyz` readiness endpoints
@@ -173,8 +175,8 @@ FulfillHub’s operational baseline includes:
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
 - dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
 
-RabbitMQ consume spans and queue lag gauges are the next observability expansion
-after the HTTP, SQL, and publish-path runtime baseline.
+Queue lag gauges are the next observability expansion after the HTTP, SQL,
+publish-path, and consume-path runtime baseline.
 
 ## Security considerations
 

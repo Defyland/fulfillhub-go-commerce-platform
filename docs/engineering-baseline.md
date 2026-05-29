@@ -40,10 +40,11 @@ The current executable slice includes:
 - Go module scaffolding
 - HTTP order creation, lookup, and cancellation handlers
 - health, readiness, and metrics endpoints
-- structured HTTP request logs plus OpenTelemetry HTTP, SQL, and RabbitMQ publish spans
+- structured HTTP request logs plus OpenTelemetry HTTP, SQL, RabbitMQ publish, and RabbitMQ consume spans
 - in-memory order store and outbox event recording
 - embedded PostgreSQL migrations and SQL-backed order/outbox/audit persistence
 - RabbitMQ publisher topology and outbox relay process
+- RabbitMQ consumer primitive with inbox deduplication and explicit ack/nack behavior
 - live RabbitMQ topology integration coverage
 - Redis-backed rate limiting
 - inbox idempotency primitives
@@ -57,8 +58,8 @@ The current executable slice includes:
 It intentionally does not include yet:
 
 - issuer, audience, and key-rotation policy for operations JWTs
-- RabbitMQ consume spans
 - compose-backed CPU, memory, queue-depth, and Redis limiter profiling
 
-The next phase must deepen security and observability around operations tooling
-and run the measured performance matrix against the full Docker Compose stack.
+The next phase must add queue-depth telemetry, complete workerized saga
+execution, and run the measured performance matrix against the full Docker
+Compose stack.

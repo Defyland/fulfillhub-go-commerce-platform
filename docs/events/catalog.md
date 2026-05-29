@@ -49,6 +49,8 @@
 - `cmd/fulfillhub-dlq-replay` requires PostgreSQL audit logging and records
   `dlq.replay` details for successful or failed replay attempts.
 - Inbox idempotency is implemented for memory tests and PostgreSQL-backed consumers.
+- RabbitMQ consumers extract `traceparent`, create consume spans, record inbox
+  entries before handlers run, ack duplicates, and nack handler failures.
 - `TestRabbitPublisherIntegration` verifies live RabbitMQ publish and route delivery when `RABBITMQ_URL` is available.
 
 ## Example event payload

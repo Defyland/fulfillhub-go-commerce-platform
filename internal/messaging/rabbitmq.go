@@ -101,11 +101,14 @@ func (c amqpHeaderCarrier) Get(key string) string {
 	if !ok {
 		return ""
 	}
-	text, ok := value.(string)
-	if !ok {
+	switch typed := value.(type) {
+	case string:
+		return typed
+	case []byte:
+		return string(typed)
+	default:
 		return ""
 	}
-	return text
 }
 
 func (c amqpHeaderCarrier) Set(key, value string) {
