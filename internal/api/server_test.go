@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
@@ -113,6 +115,47 @@ func TestServerPropagatesTraceContext(t *testing.T) {
 	}
 	assertSpanAttribute(t, span, "fulfillhub.request_id", "req_trace")
 	assertSpanAttribute(t, span, "fulfillhub.correlation_id", "cor_trace")
+}
+
+func TestMetricsIncludesRabbitMQQueueGauges(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		QueueMetrics: fakeQueueMetrics{
+			depths: []messaging.QueueDepth{
+				{Queue: messaging.InventoryReserveQueue, MessagesReady: 7, Consumers: 1},
+			},
+		},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"fulfillhub_rabbitmq_queue_metrics_up 1",
+		`fulfillhub_rabbitmq_queue_messages_ready{queue="inventory.reserve"} 7`,
+		`fulfillhub_rabbitmq_queue_consumers{queue="inventory.reserve"} 1`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestMetricsReportsRabbitMQQueueMetricsDown(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		QueueMetrics: fakeQueueMetrics{err: errors.New("rabbitmq unavailable")},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	if body := rec.Body.String(); !strings.Contains(body, "fulfillhub_rabbitmq_queue_metrics_up 0") {
+		t.Fatalf("metrics body does not report queue metrics down:\n%s", body)
+	}
 }
 
 func TestCreateOrderRequiresAPIKey(t *testing.T) {
@@ -470,6 +513,15 @@ type fixedLimiter struct {
 
 func (l *fixedLimiter) Allow(context.Context, string) (bool, error) {
 	return l.allowed, l.err
+}
+
+type fakeQueueMetrics struct {
+	depths []messaging.QueueDepth
+	err    error
+}
+
+func (m fakeQueueMetrics) QueueDepths(context.Context) ([]messaging.QueueDepth, error) {
+	return m.depths, m.err
 }
 
 func assertSpanAttribute(t testing.TB, span sdktrace.ReadOnlySpan, key, want string) {

@@ -39,4 +39,4 @@
 
 - Production deployments still need issuer, audience, and key-rotation policy for operations JWTs.
 - `/metrics` is unauthenticated in the local slice and should be network-restricted in production.
-- Compose-backed performance runs still need CPU, memory, queue-depth, and Redis limiter telemetry.
+- Compose-backed performance runs still need CPU, memory, and Redis limiter telemetry.

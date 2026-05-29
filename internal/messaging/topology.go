@@ -18,3 +18,14 @@ const (
 func RoutingKey(eventType string) string {
 	return strings.TrimSpace(eventType)
 }
+
+func QueueNames() []string {
+	return []string{
+		InventoryReserveQueue,
+		PaymentsAuthorizeQueue,
+		ShipmentsCreateQueue,
+		OrdersFinalizeQueue,
+		OrdersCompensateQueue,
+		NotificationsEmailQueue,
+	}
+}

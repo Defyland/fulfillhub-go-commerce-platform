@@ -171,13 +171,14 @@ FulfillHub’s operational baseline includes:
 - OpenTelemetry RabbitMQ consume spans with inbox idempotency and explicit acknowledgement outcomes
 - optional stdout trace export via `OTEL_TRACES_EXPORTER=stdout`
 - Prometheus-compatible request and error counters
+- Prometheus RabbitMQ queue depth and consumer gauges when `RABBITMQ_URL` is configured
 - `/healthz` liveness and `/readyz` readiness endpoints
 - `/metrics` for the current executable slice
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
 - dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
 
-Queue lag gauges are the next observability expansion after the HTTP, SQL,
-publish-path, and consume-path runtime baseline.
+Compose-backed resource measurements remain the next observability expansion
+after the HTTP, SQL, RabbitMQ, publish-path, and consume-path runtime baseline.
 
 ## Security considerations
 
@@ -246,6 +247,12 @@ To enable Redis-backed write rate limiting, provide `REDIS_URL`.
 
 ```sh
 REDIS_URL='redis://localhost:6379/0' go run ./cmd/fulfillhub-api
+```
+
+To expose RabbitMQ queue gauges on `/metrics`, provide `RABBITMQ_URL`.
+
+```sh
+RABBITMQ_URL='amqp://guest:guest@localhost:5672/' go run ./cmd/fulfillhub-api
 ```
 
 Run the outbox relay when PostgreSQL and RabbitMQ are available:

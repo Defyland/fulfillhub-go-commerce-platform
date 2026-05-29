@@ -60,8 +60,7 @@ It intentionally does not include yet:
 
 - issuer, audience, and key-rotation policy for operations JWTs
 - durable inventory, payment, shipment, notification, and compensation projections
-- compose-backed CPU, memory, queue-depth, and Redis limiter profiling
+- compose-backed CPU, memory, and Redis limiter profiling
 
-The next phase must add queue-depth telemetry, complete compensation/provider
-projection paths, and run the measured performance matrix against the full
-Docker Compose stack.
+The next phase must complete compensation/provider projection paths and run the
+measured performance matrix against the full Docker Compose stack.

@@ -66,6 +66,7 @@ Current status:
 - The outbox relay creates publish spans and injects W3C `traceparent` into
   RabbitMQ message headers.
 - RabbitMQ consumers extract W3C `traceparent`, create consume spans, record inbox idempotency, and acknowledge successful deliveries.
+- `/metrics` exposes RabbitMQ queue depth and consumer gauges when `RABBITMQ_URL` is configured.
 - Dashboards highlight queue depth, saga completion rate, compensation rate, and readiness status.
 
 ## Deployment direction

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -23,15 +24,16 @@ import (
 )
 
 type Server struct {
-	service    *commerce.Service
-	apiKeys    map[string]string
-	counter    atomic.Uint64
-	metrics    metrics
-	limiter    RateLimiter
-	logger     *slog.Logger
-	tracer     trace.Tracer
-	propagator propagation.TextMapPropagator
-	opsSecret  []byte
+	service      *commerce.Service
+	apiKeys      map[string]string
+	counter      atomic.Uint64
+	metrics      metrics
+	limiter      RateLimiter
+	logger       *slog.Logger
+	tracer       trace.Tracer
+	propagator   propagation.TextMapPropagator
+	opsSecret    []byte
+	queueMetrics messaging.QueueMetricsProvider
 }
 
 type RateLimiter interface {
@@ -44,6 +46,7 @@ type Options struct {
 	TracerProvider trace.TracerProvider
 	Propagator     propagation.TextMapPropagator
 	OpsJWTSecret   string
+	QueueMetrics   messaging.QueueMetricsProvider
 }
 
 type metrics struct {
@@ -127,11 +130,12 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 			"fh_live_merchant_demo": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
 			"fh_live_second_demo":   "mer_01hzy8v4egscg4r7kb3m7jq9qx",
 		},
-		limiter:    options.RateLimiter,
-		logger:     options.Logger,
-		tracer:     tracerProvider.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"),
-		propagator: propagator,
-		opsSecret:  []byte(options.OpsJWTSecret),
+		limiter:      options.RateLimiter,
+		logger:       options.Logger,
+		tracer:       tracerProvider.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"),
+		propagator:   propagator,
+		opsSecret:    []byte(options.OpsJWTSecret),
+		queueMetrics: options.QueueMetrics,
 	}
 }
 
@@ -197,7 +201,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"timestamp": time.Now().UTC(),
 		})
 	case r.Method == http.MethodGet && r.URL.Path == "/metrics":
-		s.writeMetrics(w)
+		s.writeMetrics(r.Context(), w)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
 		s.createOrder(w, r, requestID, correlationID)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
@@ -497,7 +501,7 @@ func (s *Server) writeError(w http.ResponseWriter, status int, code, message str
 	})
 }
 
-func (s *Server) writeMetrics(w http.ResponseWriter) {
+func (s *Server) writeMetrics(ctx context.Context, w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_http_requests_total Total HTTP requests handled.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_http_requests_total counter\n")
@@ -505,6 +509,32 @@ func (s *Server) writeMetrics(w http.ResponseWriter) {
 	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_http_errors_total Total HTTP error responses returned.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_http_errors_total counter\n")
 	_, _ = fmt.Fprintf(w, "fulfillhub_http_errors_total %d\n", s.metrics.errors.Load())
+	if s.queueMetrics == nil {
+		return
+	}
+
+	depths, err := s.queueMetrics.QueueDepths(ctx)
+	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_rabbitmq_queue_metrics_up Whether RabbitMQ queue metrics were collected successfully.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_rabbitmq_queue_metrics_up gauge\n")
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "fulfillhub_rabbitmq_queue_metrics_up 0\n")
+		return
+	}
+	_, _ = fmt.Fprintf(w, "fulfillhub_rabbitmq_queue_metrics_up 1\n")
+	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_rabbitmq_queue_messages_ready Ready messages reported by RabbitMQ queue inspection.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_rabbitmq_queue_messages_ready gauge\n")
+	for _, depth := range depths {
+		_, _ = fmt.Fprintf(w, "fulfillhub_rabbitmq_queue_messages_ready{queue=\"%s\"} %d\n", prometheusLabelValue(depth.Queue), depth.MessagesReady)
+	}
+	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_rabbitmq_queue_consumers Consumers reported by RabbitMQ queue inspection.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_rabbitmq_queue_consumers gauge\n")
+	for _, depth := range depths {
+		_, _ = fmt.Fprintf(w, "fulfillhub_rabbitmq_queue_consumers{queue=\"%s\"} %d\n", prometheusLabelValue(depth.Queue), depth.Consumers)
+	}
+}
+
+func prometheusLabelValue(value string) string {
+	return strings.NewReplacer(`\`, `\\`, "\n", `\n`, `"`, `\"`).Replace(value)
 }
 
 func (s *Server) logRequest(ctx context.Context, r *http.Request, status, bytes int, duration time.Duration, requestID, correlationID string) {

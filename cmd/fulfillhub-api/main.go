@@ -9,6 +9,7 @@ import (
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/ratelimit"
 	"go.opentelemetry.io/otel"
@@ -54,6 +55,16 @@ func main() {
 	options := api.Options{
 		Logger:       logger,
 		OpsJWTSecret: os.Getenv("OPS_JWT_SECRET"),
+	}
+	if rabbitURL := os.Getenv("RABBITMQ_URL"); rabbitURL != "" {
+		inspector, err := messaging.NewQueueInspector(rabbitURL, nil)
+		if err != nil {
+			logger.Error("create rabbitmq queue metrics inspector", "error", err)
+			options.QueueMetrics = messaging.UnavailableQueueMetrics{Err: err}
+		} else {
+			defer inspector.Close()
+			options.QueueMetrics = inspector
+		}
 	}
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
 		client, err := ratelimit.NewRedisClient(redisURL)
