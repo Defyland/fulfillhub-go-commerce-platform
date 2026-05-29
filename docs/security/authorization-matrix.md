@@ -17,7 +17,7 @@
 | --- | --- | --- |
 | Create order | `merchant_id` derived from `X-API-Key` | `order.create` |
 | Cancel order | `requested_by.type` and `requested_by.id` from request body | `order.cancel_requested` |
-| DLQ replay | Environment and operator shell context | Pending durable audit record |
+| DLQ replay | `OPS_ACTOR_ID` environment variable | `dlq.replay` |
 
 ## Enforcement Notes
 

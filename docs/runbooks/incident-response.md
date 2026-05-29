@@ -32,10 +32,16 @@ Replay command:
 
 ```sh
 RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
+DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
 DLQ_QUEUE='inventory.reserve.dlq' \
 TARGET_ROUTING_KEY='order.created' \
+OPS_ACTOR_ID='usr_ops_1' \
   go run ./cmd/fulfillhub-dlq-replay
 ```
+
+The command refuses unaudited replay by requiring `DATABASE_URL` and
+`OPS_ACTOR_ID`. It records `dlq.replay` in `audit_logs.details` with queue,
+target routing key, replay limit, replayed count, status, and any replay error.
 
 ## Scenario: inventory oversell suspicion
 

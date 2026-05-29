@@ -28,6 +28,7 @@ type AuditLog struct {
 	Action        string
 	CorrelationID string
 	CreatedAt     time.Time
+	Details       map[string]string
 }
 
 type MemoryStore struct {
@@ -113,7 +114,9 @@ func (s *MemoryStore) AuditLogs() []AuditLog {
 	defer s.mu.RUnlock()
 
 	logs := make([]AuditLog, len(s.auditLogs))
-	copy(logs, s.auditLogs)
+	for idx, log := range s.auditLogs {
+		logs[idx] = cloneAuditLog(log)
+	}
 	return logs
 }
 
@@ -169,4 +172,15 @@ func cloneOrder(order *Order) *Order {
 
 func CloneOrderForStore(order *Order) *Order {
 	return cloneOrder(order)
+}
+
+func cloneAuditLog(log AuditLog) AuditLog {
+	clone := log
+	if log.Details != nil {
+		clone.Details = make(map[string]string, len(log.Details))
+		for key, value := range log.Details {
+			clone.Details[key] = value
+		}
+	}
+	return clone
 }

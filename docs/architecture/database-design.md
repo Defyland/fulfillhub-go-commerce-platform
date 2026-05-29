@@ -16,7 +16,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 | `shipments` | Carrier handoff and tracking state | Unique `tracking_number` when present |
 | `outbox_events` | Pending messages for broker publication | Indexed by `published_at` and `created_at` |
 | `inbox_messages` | Per-consumer message deduplication | Unique `(consumer_name, message_id)` |
-| `audit_logs` | Operator and automated action trail | Indexed by `merchant_id`, `order_id`, and `created_at` |
+| `audit_logs` | Operator and automated action trail with JSON details | Indexed by `merchant_id`, `order_id`, and `created_at` |
 
 ## Index strategy
 
@@ -46,6 +46,13 @@ One transaction must:
 1. update `orders.status` and optimistic `version`
 2. insert `outbox_events` row for `order.cancel_requested`
 3. insert `audit_logs` row for `order.cancel_requested`
+
+### DLQ replay
+
+One transaction must:
+
+1. insert `audit_logs` row for `dlq.replay`
+2. include queue, target routing key, replay limit, replayed count, status, and error details
 
 ### Inventory reservation
 

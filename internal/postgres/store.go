@@ -177,7 +177,7 @@ func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 
 func (s *Store) AuditLogs() []commerce.AuditLog {
 	rows, err := s.db.QueryContext(context.Background(), `
-		SELECT merchant_id, order_id, actor_type, actor_id, action, correlation_id, created_at
+		SELECT merchant_id, order_id, actor_type, actor_id, action, correlation_id, created_at, details
 		FROM audit_logs
 		ORDER BY created_at ASC, id ASC
 	`)
@@ -190,15 +190,36 @@ func (s *Store) AuditLogs() []commerce.AuditLog {
 	for rows.Next() {
 		var log commerce.AuditLog
 		var orderID sql.NullString
-		if err := rows.Scan(&log.MerchantID, &orderID, &log.ActorType, &log.ActorID, &log.Action, &log.CorrelationID, &log.CreatedAt); err != nil {
+		var details []byte
+		if err := rows.Scan(&log.MerchantID, &orderID, &log.ActorType, &log.ActorID, &log.Action, &log.CorrelationID, &log.CreatedAt, &details); err != nil {
 			return nil
 		}
 		if orderID.Valid {
 			log.OrderID = orderID.String
 		}
+		if len(details) > 0 {
+			if err := json.Unmarshal(details, &log.Details); err != nil {
+				return nil
+			}
+		}
 		logs = append(logs, log)
 	}
 	return logs
+}
+
+func (s *Store) RecordAuditLog(ctx context.Context, audit commerce.AuditLog) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record audit log: %w", err)
+	}
+	defer rollback(tx)
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record audit log: %w", err)
+	}
+	return nil
 }
 
 func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) ([]commerce.OutboxEvent, error) {
@@ -361,11 +382,18 @@ func insertOutboxEvent(ctx context.Context, tx *sql.Tx, event commerce.OutboxEve
 }
 
 func insertAuditLog(ctx context.Context, tx *sql.Tx, audit commerce.AuditLog) error {
+	if audit.Details == nil {
+		audit.Details = map[string]string{}
+	}
+	details, err := json.Marshal(audit.Details)
+	if err != nil {
+		return fmt.Errorf("marshal audit details: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO audit_logs (
-			merchant_id, order_id, actor_type, actor_id, action, correlation_id, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, audit.MerchantID, nullableString(audit.OrderID), audit.ActorType, audit.ActorID, audit.Action, audit.CorrelationID, audit.CreatedAt); err != nil {
+			merchant_id, order_id, actor_type, actor_id, action, correlation_id, created_at, details
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, audit.MerchantID, nullableString(audit.OrderID), audit.ActorType, audit.ActorID, audit.Action, audit.CorrelationID, audit.CreatedAt, details); err != nil {
 		return fmt.Errorf("insert audit log: %w", err)
 	}
 	return nil

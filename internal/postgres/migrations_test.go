@@ -23,6 +23,19 @@ func TestMigrationsIncludeConsistencyTables(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddAuditDetails(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/002_audit_details.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{"ALTER TABLE audit_logs", "details JSONB"} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("audit details migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -112,6 +125,27 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	lastAudit := auditLogs[len(auditLogs)-1]
 	if lastAudit.Action != "order.create" || lastAudit.ActorID != order.MerchantID {
 		t.Fatalf("last audit log = %+v, want order.create by merchant", lastAudit)
+	}
+	replayAudit := commerce.AuditLog{
+		MerchantID:    "platform",
+		ActorType:     "ops",
+		ActorID:       "usr_ops_pg_test",
+		Action:        "dlq.replay",
+		CorrelationID: "cor_replay_pg_test",
+		CreatedAt:     now.Add(time.Second),
+		Details: map[string]string{
+			"queue":          "inventory.reserve.dlq",
+			"replayed_count": "2",
+			"status":         "succeeded",
+		},
+	}
+	if err := store.RecordAuditLog(ctx, replayAudit); err != nil {
+		t.Fatalf("record audit log: %v", err)
+	}
+	auditLogs = store.AuditLogs()
+	lastAudit = auditLogs[len(auditLogs)-1]
+	if lastAudit.Action != "dlq.replay" || lastAudit.Details["queue"] != "inventory.reserve.dlq" {
+		t.Fatalf("last audit log = %+v, want replay details", lastAudit)
 	}
 	pending, err := store.PendingOutboxEvents(ctx, 10)
 	if err != nil {

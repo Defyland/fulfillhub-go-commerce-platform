@@ -29,6 +29,8 @@
 - Structured logs include request and correlation IDs without logging payment tokens.
 - HTTP spans propagate W3C `traceparent` for incident correlation.
 - `order.create` and `order.cancel_requested` audit logs are written with actor and correlation metadata.
+- DLQ replay requires `DATABASE_URL` and `OPS_ACTOR_ID`, then records durable
+  `dlq.replay` audit details for success and failure attempts.
 - Operations JWTs are validated with HS256, expiry, subject, and `operations` or `ops` role claims.
 - CI runs Go tests, race detection, OpenAPI linting, markdown linting, Docker build validation, and gitleaks.
 
@@ -36,6 +38,5 @@
 
 - Production deployments still need issuer, audience, and key-rotation policy for operations JWTs.
 - `/metrics` is unauthenticated in the local slice and should be network-restricted in production.
-- DLQ replay currently logs operator activity; durable replay audit records are still required.
 - SQL and RabbitMQ spans are not implemented yet.
 - Compose-backed performance runs still need CPU, memory, queue-depth, and Redis limiter telemetry.

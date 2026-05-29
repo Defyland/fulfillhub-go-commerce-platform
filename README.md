@@ -255,10 +255,16 @@ Replay a DLQ queue explicitly:
 
 ```sh
 RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
+DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
 DLQ_QUEUE='inventory.reserve.dlq' \
 TARGET_ROUTING_KEY='order.created' \
+OPS_ACTOR_ID='usr_ops_1' \
   go run ./cmd/fulfillhub-dlq-replay
 ```
+
+The replay command writes a durable `dlq.replay` audit log with queue, target
+routing key, replay limit, replayed count, status, and error details when a
+partial replay fails.
 
 Run the local infrastructure stack:
 
