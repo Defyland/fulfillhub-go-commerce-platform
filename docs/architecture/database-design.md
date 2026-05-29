@@ -75,6 +75,14 @@ The current worker records the order-level reservation projection in one transac
 3. insert `outbox_events` row for `inventory.reserved`
 4. insert `audit_logs` row for `inventory.reserved`
 
+### Inventory rejection
+
+The current worker records reservation failure in one transaction:
+
+1. mark order item reservation status as `rejected`
+2. insert `outbox_events` row for `inventory.rejected`
+3. insert `audit_logs` row for `inventory.rejected` with the reservation error detail
+
 ### Payment authorization
 
 The current worker records the provider authorization projection in one transaction:

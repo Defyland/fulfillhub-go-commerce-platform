@@ -117,6 +117,23 @@ func (s *MemoryStore) RecordInventoryReserved(_ context.Context, source OutboxEv
 	return nil
 }
 
+func (s *MemoryStore) RecordInventoryRejected(_ context.Context, source OutboxEvent, next OutboxEvent, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	order, ok := s.orders[source.OrderID]
+	if !ok {
+		return ErrNotFound
+	}
+	for idx := range order.Items {
+		order.Items[idx].ReservationStatus = "rejected"
+	}
+	order.UpdatedAt = next.OccurredAt
+	s.outbox = append(s.outbox, next)
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
 func (s *MemoryStore) RecordPaymentAuthorized(_ context.Context, source OutboxEvent, next OutboxEvent, payment Payment, audit AuditLog) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

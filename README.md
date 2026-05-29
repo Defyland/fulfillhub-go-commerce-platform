@@ -104,6 +104,8 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
 
 - Order acceptance emits `order.created`
 - Inventory worker consumes reserve requests, records `stock_reservations`, and writes `inventory.reserved` to the outbox
+- Inventory reservation failures are converted to `inventory.rejected` outbox
+  events so compensation can fail the order through the same broker path
 - Payment worker consumes inventory reservations, records `payment_authorizations`, and writes `payment.authorized` to the outbox
 - Payment authorization failures are converted to `payment.failed` outbox
   events so compensation can run through the same broker path
@@ -142,6 +144,7 @@ The current implementation includes Go tests for:
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
 - RabbitMQ consumer trace propagation, inbox deduplication, retry scheduling, and ack/nack behavior
+- inventory reservation failure handling with durable `inventory.rejected` outbox events
 - payment authorization failure handling with durable `payment.failed` outbox events
 - shipment provider failure handling with durable `shipment.failed` outbox events
 - fulfillment worker happy-path progression through durable inventory, payment, shipment, and order completion projections

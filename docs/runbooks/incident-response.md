@@ -75,6 +75,21 @@ Actions:
 3. Restore DB access first, then inspect outbox lag and consumer backlog.
 4. Re-run only the minimal set of affected messages after health stabilizes.
 
+## Scenario: inventory reservation failure after order acceptance
+
+Symptoms:
+
+- `inventory.rejected` events appear after `order.created`
+- affected order items have reservation status `rejected`
+- compensation worker records `compensation.inventory_rejected`
+
+Actions:
+
+1. Inspect the `inventory.rejected` audit details for the stock or reservation error.
+2. Confirm whether the SKU is actually unavailable or the inventory dependency is degraded.
+3. If dependency-related, wait for retry queues to drain before manual intervention.
+4. If stock is unavailable, let compensation fail the order and notify the merchant.
+
 ## Scenario: payment authorization failure after inventory reservation
 
 Symptoms:

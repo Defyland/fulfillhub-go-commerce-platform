@@ -51,9 +51,9 @@ Current status:
 6. `cmd/fulfillhub-outbox-relay` publishes pending outbox rows to RabbitMQ.
 7. RabbitMQ consumers can continue trace context, record inbox deduplication,
    schedule bounded retry delivery, and acknowledge or dead-letter deliveries.
-8. `cmd/fulfillhub-worker` persists inventory reservations, payment
-   authorizations, payment failures, shipments, and shipment failures, then
-   writes the next saga event to the outbox.
+8. `cmd/fulfillhub-worker` persists inventory reservations, inventory
+   rejections, payment authorizations, payment failures, shipments, and
+   shipment failures, then writes the next saga event to the outbox.
 9. Compose smoke, load, stress, and spike profiling verifies the local runtime
    with outbox, ready queue, and unacknowledged queue drain.
 

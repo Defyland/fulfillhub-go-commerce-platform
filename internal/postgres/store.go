@@ -242,6 +242,51 @@ func (s *Store) RecordInventoryReserved(ctx context.Context, source commerce.Out
 	return nil
 }
 
+func (s *Store) RecordInventoryRejected(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_inventory_rejected", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", source.OrderID),
+		attribute.String("fulfillhub.merchant_id", source.MerchantID),
+	))
+	defer finishSpan(span, &err, "record inventory rejection")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record inventory rejection: %w", err)
+	}
+	defer rollback(tx)
+
+	if _, err := getOrderTx(ctx, tx, source.OrderID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE order_items
+		SET reservation_status = 'rejected'
+		WHERE order_id = $1
+	`, source.OrderID); err != nil {
+		return fmt.Errorf("mark order items rejected: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET updated_at = $2,
+			version = version + 1
+		WHERE order_id = $1
+	`, source.OrderID, next.OccurredAt); err != nil {
+		return fmt.Errorf("touch order after inventory rejection: %w", err)
+	}
+	if err := insertOutboxEvent(ctx, tx, next); err != nil {
+		return err
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record inventory rejection: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) RecordPaymentAuthorized(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, payment commerce.Payment, audit commerce.AuditLog) (err error) {
 	ctx = contextOrBackground(ctx)
 	ctx, span := postgresTracer().Start(ctx, "postgres.record_payment_authorized", trace.WithAttributes(

@@ -16,12 +16,23 @@ type OrderStatusUpdater interface {
 
 type Projector interface {
 	RecordInventoryReserved(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
+	RecordInventoryRejected(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordPaymentAuthorized(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, payment commerce.Payment, audit commerce.AuditLog) error
 	RecordPaymentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) error
 	RecordShipmentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordNotificationQueued(ctx context.Context, source commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordCompensation(ctx context.Context, source commerce.OutboxEvent, status commerce.OrderStatus, audit commerce.AuditLog) error
+}
+
+type InventoryReserver interface {
+	ReserveInventory(ctx context.Context, event commerce.OutboxEvent) error
+}
+
+type InventoryReserverFunc func(context.Context, commerce.OutboxEvent) error
+
+func (f InventoryReserverFunc) ReserveInventory(ctx context.Context, event commerce.OutboxEvent) error {
+	return f(ctx, event)
 }
 
 type PaymentAuthorizer interface {
@@ -47,6 +58,7 @@ func (f ShipmentCreatorFunc) CreateShipment(ctx context.Context, event commerce.
 type Dependencies struct {
 	Projector         Projector
 	Orders            OrderStatusUpdater
+	InventoryReserver InventoryReserver
 	PaymentAuthorizer PaymentAuthorizer
 	ShipmentCreator   ShipmentCreator
 	Clock             func() time.Time
@@ -138,6 +150,14 @@ func reserveInventory(ctx context.Context, deps Dependencies, event commerce.Out
 		return err
 	}
 	now := deps.Clock()
+	if deps.InventoryReserver != nil {
+		if err := deps.InventoryReserver.ReserveInventory(ctx, event); err != nil {
+			rejected := nextEventAt(deps, event, "inventory.rejected", now)
+			audit := systemAudit(event, "inventory.rejected", now)
+			audit.Details["error"] = err.Error()
+			return deps.Projector.RecordInventoryRejected(ctx, event, rejected, audit)
+		}
+	}
 	next := nextEventAt(deps, event, "inventory.reserved", now)
 	return deps.Projector.RecordInventoryReserved(ctx, event, next, systemAudit(event, "inventory.reserved", now))
 }

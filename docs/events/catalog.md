@@ -62,6 +62,9 @@
 - Inventory, payment, and shipment workers persist their projections and write
   the next saga event through the transactional outbox instead of publishing
   directly to RabbitMQ.
+- Inventory worker reservation failures write `inventory.rejected` to the
+  transactional outbox with audit details before compensation consumes the
+  failure event.
 - Payment worker authorization failures write `payment.failed` to the
   transactional outbox with audit details before compensation consumes the
   failure event.

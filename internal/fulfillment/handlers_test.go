@@ -92,6 +92,54 @@ func TestHandlerForQueueRejectsUnexpectedEventType(t *testing.T) {
 	}
 }
 
+func TestInventoryHandlerWritesRejectionEventWhenReservationFails(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	ids := []string{"msg_inventory_rejected"}
+	now := time.Date(2026, 5, 29, 14, 30, 0, 0, time.UTC)
+	deps := Dependencies{
+		Projector: store,
+		Orders:    store,
+		InventoryReserver: InventoryReserverFunc(func(context.Context, commerce.OutboxEvent) error {
+			return context.DeadlineExceeded
+		}),
+		Clock: func() time.Time { return now },
+		NewID: func(string) string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	}
+
+	inventory := handlerForTest(t, messaging.InventoryReserveQueue, deps)
+	if err := inventory.HandleEvent(context.Background(), service.OutboxEvents()[0]); err != nil {
+		t.Fatalf("inventory handler returned error: %v", err)
+	}
+
+	if got := eventTypes(service.OutboxEvents()); len(got) != 2 || got[1] != "inventory.rejected" {
+		t.Fatalf("outbox event types = %v, want inventory.rejected", got)
+	}
+	rejected, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if rejected.Items[0].ReservationStatus != "rejected" {
+		t.Fatalf("reservation status = %q, want rejected", rejected.Items[0].ReservationStatus)
+	}
+	logs := service.AuditLogs()
+	last := logs[len(logs)-1]
+	if last.Action != "inventory.rejected" {
+		t.Fatalf("last audit action = %q, want inventory.rejected", last.Action)
+	}
+	if last.Details["error"] == "" {
+		t.Fatalf("inventory rejection audit details = %+v, want error", last.Details)
+	}
+}
+
 func TestPaymentHandlerWritesFailureEventWhenAuthorizationFails(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
