@@ -7,7 +7,7 @@ info:
     url: https://github.com/Defyland/fulfillhub-go-commerce-platform
   description: |
     Contract-first HTTP API for FulfillHub.
-    This contract describes the first executable Go API slice and the planned stable surface for the commerce orchestration workflow.
+    This contract describes the implemented Go API surface for the commerce orchestration workflow.
 servers:
   - url: http://localhost:8080
     description: Local development

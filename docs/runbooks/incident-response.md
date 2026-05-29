@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This runbook defines the first operational playbook for FulfillHub. It focuses on the failure modes most likely to happen once Phase 1 is live.
+This runbook defines the operational playbook for the current FulfillHub local runtime. It focuses on the failure modes most likely to happen across the API, PostgreSQL, RabbitMQ, Redis, relay, and worker processes.
 
 ## Global response checklist
 
