@@ -2,7 +2,7 @@
 
 ## Scope
 
-This document defines the benchmark matrix and acceptance targets for FulfillHub. The repository now has a native in-process Go benchmark; k6 network load tests remain the next performance milestone.
+This document defines the benchmark matrix and acceptance targets for FulfillHub. The repository now has a native in-process Go benchmark and k6 scripts; measured k6 network load results remain the next performance milestone.
 
 ## Planned scenarios
 
@@ -13,11 +13,13 @@ This document defines the benchmark matrix and acceptance targets for FulfillHub
 | Stress | Find degradation point | Ramp from 50 to 250 virtual users over 20 minutes | Graceful saturation, no duplicate orders, no data corruption |
 | Spike | Observe sudden demand bursts | Jump from 20 to 200 virtual users in 30 seconds | Rate limiting and queue buffering behave predictably |
 
+The k6 scripts live under `benchmarks/k6/`.
+
 ## Current measured baseline
 
 | Benchmark | Result | Scope |
 | --- | --- | --- |
-| `BenchmarkCreateOrder-10` | 15784 ns/op | In-process Go HTTP handler via `httptest` |
+| `BenchmarkCreateOrder-10` | 15128 ns/op | In-process Go HTTP handler via `httptest` |
 
 ## Measured metrics
 

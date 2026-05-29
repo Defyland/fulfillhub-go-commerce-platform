@@ -10,6 +10,7 @@ import (
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/ratelimit"
 )
 
 func main() {
@@ -33,8 +34,24 @@ func main() {
 		store = postgresStore
 	}
 
+	options := api.Options{}
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		client, err := ratelimit.NewRedisClient(redisURL)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer client.Close()
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := client.Ping(ctx).Err(); err != nil {
+			cancel()
+			log.Fatal(err)
+		}
+		cancel()
+		options.RateLimiter = ratelimit.NewRedisLimiter(client, 120, time.Minute)
+	}
+
 	service := commerce.NewService(store)
-	server := api.NewServer(service)
+	server := api.NewServerWithOptions(service, options)
 
 	log.Printf("starting fulfillhub api on %s", addr)
 	if err := http.ListenAndServe(addr, server); err != nil {

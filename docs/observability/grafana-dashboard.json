@@ -1,0 +1,73 @@
+{
+  "title": "FulfillHub Commerce Operations",
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "HTTP Requests",
+      "targets": [
+        {
+          "expr": "sum(rate(fulfillhub_http_requests_total[5m]))",
+          "legendFormat": "requests/sec"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "stat",
+      "title": "HTTP Errors",
+      "targets": [
+        {
+          "expr": "sum(rate(fulfillhub_http_errors_total[5m]))",
+          "legendFormat": "errors/sec"
+        }
+      ],
+      "gridPos": {
+        "x": 6,
+        "y": 0,
+        "w": 6,
+        "h": 4
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "RabbitMQ Queue Depth",
+      "targets": [
+        {
+          "expr": "rabbitmq_queue_messages_ready{queue=~\"inventory.reserve|payments.authorize|shipments.create|orders.compensate\"}",
+          "legendFormat": "{{queue}}"
+        }
+      ],
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Outbox Backlog",
+      "targets": [
+        {
+          "expr": "fulfillhub_outbox_unpublished_total",
+          "legendFormat": "unpublished"
+        }
+      ],
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      }
+    }
+  ]
+}

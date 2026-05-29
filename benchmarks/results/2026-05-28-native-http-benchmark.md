@@ -24,7 +24,7 @@ go test -bench=. ./internal/api -run '^$'
 
 | Benchmark | Iterations | ns/op |
 | --- | ---: | ---: |
-| `BenchmarkCreateOrder-10` | 81255 | 15784 |
+| `BenchmarkCreateOrder-10` | 73024 | 15128 |
 
 ## Interpretation
 

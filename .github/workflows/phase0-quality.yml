@@ -70,6 +70,13 @@ jobs:
       - name: Validate Docker build
         run: docker build .
 
+  k6:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate k6 scripts are present
+        run: test -f benchmarks/k6/smoke.js && test -f benchmarks/k6/load.js && test -f benchmarks/k6/stress.js && test -f benchmarks/k6/spike.js
+
   markdown:
     runs-on: ubuntu-latest
     steps:

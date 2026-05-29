@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 2 persistence and messaging slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher topology, inbox idempotency, request tests, authorization tests, database tests, messaging tests, a native benchmark, Docker build validation, and documentation baseline. Redis and k6 load tests remain planned next steps.
+> Status: Phase 3 controls and performance-assets slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher topology, Redis rate limiting, inbox idempotency, request tests, authorization tests, database tests, messaging tests, k6 scripts, a native benchmark, Grafana dashboard definition, Docker build validation, and documentation baseline. Live k6 results and provider adapters remain planned next steps.
 
 ## What is this product?
 
@@ -41,13 +41,13 @@ FulfillHub solves that by centralizing orchestration and explicitly designing fo
 
 ## Architecture overview
 
-The current implementation starts as a Go modular monolith with strongly isolated packages and asynchronous boundaries represented through a transactional outbox. The goal is to earn reliability and simplicity first, then add Redis controls, k6 baselines, dashboards, and provider adapters behind the same contracts.
+The current implementation starts as a Go modular monolith with strongly isolated packages and asynchronous boundaries represented through a transactional outbox. The goal is to earn reliability and simplicity first, then add live k6 baselines and provider adapters behind the same contracts.
 
 - HTTP API entrypoint for merchant and operations access
 - Domain modules for orders, inventory, payments, shipments, notifications, and reporting
 - In-memory store for fast local tests and PostgreSQL for transactional state, outbox, inbox, and audit logs when `DATABASE_URL` is configured
 - Transactional outbox events with a RabbitMQ relay for domain fan-out and asynchronous side effects
-- Redis planned for idempotency windows and rate-limiting primitives
+- Redis-backed rate limiting when `REDIS_URL` is configured
 - OpenTelemetry, Prometheus, and Grafana for observability
 
 More detail lives in [docs/architecture/overview.md](./docs/architecture/overview.md) and [docs/diagrams/system-context.md](./docs/diagrams/system-context.md).
@@ -135,7 +135,7 @@ The current implementation includes Go tests for:
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
 
-The remaining planned test layers are live RabbitMQ integration tests and k6 load tests once those runtime dependencies are available locally or in CI.
+The remaining planned test layers are live RabbitMQ integration tests and measured k6 load results once those runtime dependencies are available locally or in CI.
 
 ## Performance benchmarks
 
@@ -160,6 +160,7 @@ FulfillHub’s operational baseline includes:
 - `/healthz` liveness and `/readyz` readiness endpoints
 - `/metrics` Prometheus-compatible request and error counters in the current executable slice
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
+- dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
 
 ## Security considerations
 
@@ -207,6 +208,12 @@ DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=d
   go run ./cmd/fulfillhub-api
 ```
 
+To enable Redis-backed write rate limiting, provide `REDIS_URL`.
+
+```sh
+REDIS_URL='redis://localhost:6379/0' go run ./cmd/fulfillhub-api
+```
+
 Run the outbox relay when PostgreSQL and RabbitMQ are available:
 
 ```sh
@@ -242,6 +249,12 @@ Run the native benchmark:
 go test -bench=. ./internal/api -run '^$'
 ```
 
+Run k6 smoke against a running API:
+
+```sh
+BASE_URL='http://localhost:8080' k6 run benchmarks/k6/smoke.js
+```
+
 The GitHub Actions workflow at `.github/workflows/phase0-quality.yml` runs repository validation, `gofmt`, `go vet`, tests, PostgreSQL integration tests, benchmark smoke, markdown linting, OpenAPI validation, secret scanning, and Docker build validation.
 
 ## Failure scenarios
@@ -264,4 +277,4 @@ Runbook detail lives in [docs/runbooks/incident-response.md](./docs/runbooks/inc
 1. Phase 0: repository narrative, OpenAPI contract, ADRs, event catalog, benchmark plan, and quality gates
 2. Phase 1: Go workspace bootstrap, HTTP API slice, in-memory outbox, request tests, authorization tests, native benchmark, and Docker build
 3. Phase 2: PostgreSQL schema, transactional outbox persistence, RabbitMQ relay, inbox deduplication, and failure simulations
-4. Phase 3: k6 performance baselines, dashboards, DLQ replay tooling, Redis rate limiting, and provider adapters
+4. Phase 3: k6 scripts, dashboards, DLQ replay tooling, Redis rate limiting, and provider adapters

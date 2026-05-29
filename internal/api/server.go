@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +18,15 @@ type Server struct {
 	apiKeys map[string]string
 	counter atomic.Uint64
 	metrics metrics
+	limiter RateLimiter
+}
+
+type RateLimiter interface {
+	Allow(ctx context.Context, key string) (bool, error)
+}
+
+type Options struct {
+	RateLimiter RateLimiter
 }
 
 type metrics struct {
@@ -66,12 +76,17 @@ type cancelOrderRequest struct {
 }
 
 func NewServer(service *commerce.Service) http.Handler {
+	return NewServerWithOptions(service, Options{})
+}
+
+func NewServerWithOptions(service *commerce.Service, options Options) http.Handler {
 	return &Server{
 		service: service,
 		apiKeys: map[string]string{
 			"fh_live_merchant_demo": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
 			"fh_live_second_demo":   "mer_01hzy8v4egscg4r7kb3m7jq9qx",
 		},
+		limiter: options.RateLimiter,
 	}
 }
 
@@ -118,6 +133,9 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request, requestID, 
 	if !ok {
 		return
 	}
+	if !s.allowWrite(w, r, act.MerchantID, requestID, correlationID) {
+		return
+	}
 
 	var req commerce.CreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -144,6 +162,22 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request, requestID, 
 		},
 		Meta: responseMeta{RequestID: requestID, CorrelationID: correlationID},
 	})
+}
+
+func (s *Server) allowWrite(w http.ResponseWriter, r *http.Request, merchantID, requestID, correlationID string) bool {
+	if s.limiter == nil {
+		return true
+	}
+	allowed, err := s.limiter.Allow(r.Context(), "merchant:"+merchantID+":write")
+	if err != nil {
+		s.writeError(w, http.StatusServiceUnavailable, "dependency_unavailable", "Rate limiter is unavailable.", true, nil, requestID, correlationID)
+		return false
+	}
+	if !allowed {
+		s.writeError(w, http.StatusTooManyRequests, "rate_limited", "Too many order creation requests for this merchant.", true, nil, requestID, correlationID)
+		return false
+	}
+	return true
 }
 
 func (s *Server) orderRoute(w http.ResponseWriter, r *http.Request, requestID, correlationID string) {

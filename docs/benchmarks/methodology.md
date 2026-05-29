@@ -18,24 +18,28 @@ Benchmarking exists to measure whether FulfillHub can keep checkout orchestratio
 - Duration: 1 minute
 - Users: 5
 - Purpose: validate environment wiring and fail fast on obvious regressions
+- Script: `benchmarks/k6/smoke.js`
 
 ### Load
 
 - Duration: 15 minutes
 - Users: 50 steady
 - Purpose: observe steady-state latency and error rate
+- Script: `benchmarks/k6/load.js`
 
 ### Stress
 
 - Duration: 20 minutes
 - Users: ramp from 50 to 250
 - Purpose: locate saturation points and failure modes
+- Script: `benchmarks/k6/stress.js`
 
 ### Spike
 
 - Duration: 10 minutes
 - Users: jump from 20 to 200 in 30 seconds
 - Purpose: validate rate limiting and queue absorption during bursts
+- Script: `benchmarks/k6/spike.js`
 
 ## Dataset assumptions
 

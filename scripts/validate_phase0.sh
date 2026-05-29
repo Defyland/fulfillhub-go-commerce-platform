@@ -20,8 +20,10 @@ docs/architecture
 docs/benchmarks
 docs/diagrams
 docs/events
+docs/observability
 docs/runbooks
 benchmarks
+benchmarks/k6
 benchmarks/results
 scripts
 .github/workflows
@@ -71,11 +73,16 @@ docs/benchmarks/results-status.md
 docs/diagrams/system-context.md
 docs/diagrams/order-saga-sequence.md
 docs/events/catalog.md
+docs/observability/grafana-dashboard.json
 docs/runbooks/incident-response.md
 docs/adr/0001-modular-monolith-first.md
 docs/adr/0002-rabbitmq-outbox-inbox.md
 docs/adr/0003-authentication-and-authorization.md
 benchmarks/baseline.md
+benchmarks/k6/smoke.js
+benchmarks/k6/load.js
+benchmarks/k6/stress.js
+benchmarks/k6/spike.js
 benchmarks/results/README.md
 .github/workflows/phase0-quality.yml
 "

@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,20 @@ func TestCreateOrderRejectsValidationFailure(t *testing.T) {
 	if !strings.Contains(rec.Body.String(), "items[0].quantity") {
 		t.Fatalf("response body does not include validation field: %s", rec.Body.String())
 	}
+}
+
+func TestCreateOrderAppliesRateLimit(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		RateLimiter: &fixedLimiter{allowed: false},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(validOrderJSON(t)))
+	req.Header.Set("X-API-Key", "fh_live_merchant_demo")
+	req.Header.Set("Idempotency-Key", "idem-key-0001")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusTooManyRequests)
 }
 
 func TestMerchantCannotReadAnotherMerchantOrder(t *testing.T) {
@@ -298,4 +313,13 @@ func assertStatus(t testing.TB, rec *httptest.ResponseRecorder, want int) {
 	if rec.Code != want {
 		t.Fatalf("status = %d, want %d: %s", rec.Code, want, rec.Body.String())
 	}
+}
+
+type fixedLimiter struct {
+	allowed bool
+	err     error
+}
+
+func (l *fixedLimiter) Allow(context.Context, string) (bool, error) {
+	return l.allowed, l.err
 }
