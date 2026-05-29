@@ -450,7 +450,9 @@ paths:
       tags:
         - Health
       summary: Prometheus metrics
-      description: Exposes Prometheus-compatible counters for the first executable API slice.
+      description: >
+        Exposes Prometheus-compatible counters. When METRICS_BEARER_TOKEN is
+        configured, callers must send Authorization: Bearer <token>.
       operationId: getMetrics
       responses:
         '200':
@@ -459,6 +461,12 @@ paths:
             text/plain:
               schema:
                 type: string
+        '401':
+          description: Metrics bearer token is missing or invalid when metrics auth is configured
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 components:
   securitySchemes:
     ApiKeyAuth:

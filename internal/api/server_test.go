@@ -198,6 +198,40 @@ func TestMetricsReportsRabbitMQQueueMetricsDown(t *testing.T) {
 	}
 }
 
+func TestMetricsRequiresBearerTokenWhenConfigured(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		MetricsBearerToken: "metrics-secret",
+	})
+
+	for _, tc := range []struct {
+		name          string
+		authorization string
+		wantStatus    int
+	}{
+		{name: "missing", wantStatus: http.StatusUnauthorized},
+		{name: "invalid", authorization: "Bearer wrong-secret", wantStatus: http.StatusUnauthorized},
+		{name: "valid", authorization: "Bearer metrics-secret", wantStatus: http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+			if tc.authorization != "" {
+				req.Header.Set("Authorization", tc.authorization)
+			}
+
+			server.ServeHTTP(rec, req)
+
+			assertStatus(t, rec, tc.wantStatus)
+			if tc.wantStatus == http.StatusOK && !strings.Contains(rec.Body.String(), "fulfillhub_http_requests_total") {
+				t.Fatalf("metrics body missing request counter:\n%s", rec.Body.String())
+			}
+			if tc.wantStatus == http.StatusUnauthorized && strings.Contains(rec.Body.String(), "fulfillhub_http_requests_total") {
+				t.Fatalf("unauthorized response must not expose metrics:\n%s", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestCreateOrderRequiresAPIKey(t *testing.T) {
 	server := testServer()
 	rec := httptest.NewRecorder()

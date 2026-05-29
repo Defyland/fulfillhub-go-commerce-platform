@@ -177,6 +177,7 @@ FulfillHub’s operational baseline includes:
 - Prometheus-compatible request and error counters
 - Prometheus outbox backlog gauge for unpublished relay events
 - Prometheus RabbitMQ queue depth and consumer gauges when `RABBITMQ_URL` is configured
+- optional `/metrics` bearer protection via `METRICS_BEARER_TOKEN`
 - `/healthz` liveness and `/readyz` readiness endpoints
 - `/metrics` for the current executable slice
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
@@ -276,6 +277,13 @@ To expose RabbitMQ queue gauges on `/metrics`, provide `RABBITMQ_URL`.
 
 ```sh
 RABBITMQ_URL='amqp://guest:guest@localhost:5672/' go run ./cmd/fulfillhub-api
+```
+
+To require a bearer token for `/metrics`, provide `METRICS_BEARER_TOKEN` and
+scrape with `Authorization: Bearer <token>`.
+
+```sh
+METRICS_BEARER_TOKEN='local-metrics-token' go run ./cmd/fulfillhub-api
 ```
 
 Run the outbox relay when PostgreSQL and RabbitMQ are available:

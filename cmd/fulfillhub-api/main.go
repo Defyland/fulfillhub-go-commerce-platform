@@ -58,6 +58,7 @@ func main() {
 		OpsJWTPreviousSecrets: splitCSV(os.Getenv("OPS_JWT_PREVIOUS_SECRETS")),
 		OpsJWTIssuer:          os.Getenv("OPS_JWT_ISSUER"),
 		OpsJWTAudience:        os.Getenv("OPS_JWT_AUDIENCE"),
+		MetricsBearerToken:    os.Getenv("METRICS_BEARER_TOKEN"),
 	}
 	if outboxBacklog, ok := store.(api.OutboxBacklogProvider); ok {
 		options.OutboxBacklog = outboxBacklog

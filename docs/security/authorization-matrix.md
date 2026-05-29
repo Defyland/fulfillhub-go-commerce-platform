@@ -9,7 +9,8 @@
 | `POST /api/v1/orders/{orderId}/cancel` | Own merchant orders only | Any merchant order | Denied |
 | `GET /healthz` | Allowed | Allowed | Allowed |
 | `GET /readyz` | Allowed | Allowed | Allowed |
-| `GET /metrics` | Allowed in local slice | Allowed in local slice | Allowed in local slice |
+| `GET /metrics` | Allowed only when no metrics bearer token is configured | Allowed only when no metrics bearer token is configured | Allowed only when no metrics bearer token is configured |
+| `GET /metrics` with metrics bearer | Denied unless token matches `METRICS_BEARER_TOKEN` | Denied unless token matches `METRICS_BEARER_TOKEN` | Denied unless token matches `METRICS_BEARER_TOKEN` |
 
 ## Actor Metadata
 
@@ -28,4 +29,5 @@
   during key rotation.
 - Accepted operations roles are `operations` and `ops`.
 - `Bearer ops-token` is a local-only fallback when `OPS_JWT_SECRET` is absent.
-- Metrics should sit behind network policy, gateway auth, or Prometheus-only scrape access outside local development.
+- `METRICS_BEARER_TOKEN` enables runtime bearer protection for `/metrics`.
+- Metrics should still sit behind network policy, gateway auth, or Prometheus-only scrape access outside local development.

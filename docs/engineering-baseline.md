@@ -45,6 +45,7 @@ The current executable slice includes:
 - health, readiness, and metrics endpoints
 - structured HTTP request logs plus OpenTelemetry HTTP, SQL, RabbitMQ publish, and RabbitMQ consume spans
 - shared tracing configuration with disabled, stdout, and OTLP/HTTP exporter modes
+- optional bearer protection for the Prometheus metrics endpoint
 - in-memory order store and outbox event recording
 - embedded PostgreSQL migrations and SQL-backed order/outbox/audit persistence
 - RabbitMQ publisher topology and outbox relay process

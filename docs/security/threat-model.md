@@ -31,6 +31,8 @@
 - Structured logs include request and correlation IDs without logging payment tokens.
 - HTTP and RabbitMQ publish/consume spans propagate W3C `traceparent` for
   incident correlation and can be exported to the local OTLP collector.
+- `/metrics` can require a dedicated bearer token when
+  `METRICS_BEARER_TOKEN` is configured.
 - `order.create`, `order.cancel_requested`, and worker-driven `order.completed`
   audit logs are written with actor and correlation metadata.
 - Worker-driven inventory, payment, and shipment projections write audit logs
@@ -48,7 +50,6 @@
 
 ## Known Gaps
 
-- `/metrics` is unauthenticated in the local slice and should be network-restricted in production.
-- Compose-backed load, stress, and spike telemetry exists for local profiling;
-  production deployment would still need authenticated metrics and network
-  policy around the observability endpoints.
+- Local profiling leaves `METRICS_BEARER_TOKEN` unset by default for simple
+  smoke/load execution; production deployment must enable it or enforce an
+  equivalent gateway control plus network policy around observability endpoints.

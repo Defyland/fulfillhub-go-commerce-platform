@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -37,6 +38,7 @@ type Server struct {
 	opsAudience   string
 	queueMetrics  messaging.QueueMetricsProvider
 	outboxMetrics OutboxBacklogProvider
+	metricsToken  string
 }
 
 type RateLimiter interface {
@@ -58,6 +60,7 @@ type Options struct {
 	OpsJWTAudience        string
 	QueueMetrics          messaging.QueueMetricsProvider
 	OutboxBacklog         OutboxBacklogProvider
+	MetricsBearerToken    string
 }
 
 type metrics struct {
@@ -154,6 +157,7 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 		opsAudience:   strings.TrimSpace(options.OpsJWTAudience),
 		queueMetrics:  options.QueueMetrics,
 		outboxMetrics: options.OutboxBacklog,
+		metricsToken:  strings.TrimSpace(options.MetricsBearerToken),
 	}
 }
 
@@ -219,6 +223,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			"timestamp": time.Now().UTC(),
 		})
 	case r.Method == http.MethodGet && r.URL.Path == "/metrics":
+		if !s.authorizeMetrics(w, r, requestID, correlationID) {
+			return
+		}
 		s.writeMetrics(r.Context(), w)
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
 		s.createOrder(w, r, requestID, correlationID)
@@ -419,6 +426,22 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, requestID,
 	}
 	s.writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required.", false, nil, requestID, correlationID)
 	return actor{}, false
+}
+
+func (s *Server) authorizeMetrics(w http.ResponseWriter, r *http.Request, requestID, correlationID string) bool {
+	if s.metricsToken == "" {
+		return true
+	}
+	token := bearerToken(r.Header.Get("Authorization"))
+	if subtle.ConstantTimeCompare([]byte(token), []byte(s.metricsToken)) == 1 {
+		if state, ok := r.Context().Value(requestStateKey{}).(*requestState); ok {
+			state.ActorType = "metrics"
+			state.ActorID = "prometheus"
+		}
+		return true
+	}
+	s.writeError(w, http.StatusUnauthorized, "unauthorized", "Metrics bearer token is missing or invalid.", false, nil, requestID, correlationID)
+	return false
 }
 
 func bearerToken(header string) string {
