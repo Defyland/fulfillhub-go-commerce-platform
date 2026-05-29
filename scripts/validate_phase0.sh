@@ -67,6 +67,8 @@ internal/commerce/service_test.go
 internal/commerce/store.go
 internal/fulfillment/handlers.go
 internal/fulfillment/handlers_test.go
+internal/fulfillment/provider_adapters.go
+internal/fulfillment/provider_adapters_test.go
 internal/messaging/inbox.go
 internal/messaging/dlq.go
 internal/messaging/rabbitmq.go
@@ -90,6 +92,8 @@ internal/postgres/migrations/007_inventory_catalog.sql
 internal/postgres/migrations/008_orders_merchant_fk.sql
 internal/postgres/migrations/009_stock_reservation_warehouse.sql
 internal/postgres/migrations/010_demo_inventory_seed.sql
+internal/postgres/migrations/011_order_status_check.sql
+internal/postgres/migrations/012_order_provider_references.sql
 internal/providers/payment.go
 internal/providers/providers_test.go
 internal/providers/shipment.go
@@ -121,6 +125,8 @@ benchmarks/results/README.md
 benchmarks/results/2026-05-29-compose-smoke.md
 benchmarks/results/2026-05-29-compose-load-stress-spike.md
 scripts/run_compose_profile.sh
+scripts/run_compose_saga_smoke.sh
+scripts/validate_benchmark_budgets.py
 .github/workflows/phase0-quality.yml
 "
 
