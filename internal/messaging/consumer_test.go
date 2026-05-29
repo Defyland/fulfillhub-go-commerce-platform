@@ -114,6 +114,47 @@ func TestConsumerNacksHandlerFailure(t *testing.T) {
 	}
 }
 
+func TestConsumerReleasesInboxAfterHandlerFailure(t *testing.T) {
+	inbox := NewMemoryInbox()
+	event := commerce.OutboxEvent{
+		MessageID:     "msg_1",
+		CorrelationID: "cor_1",
+		EventType:     "order.created",
+	}
+	attempts := 0
+	consumer := Consumer{
+		Queue:        InventoryReserveQueue,
+		ConsumerName: "inventory-worker",
+		Inbox:        inbox,
+		Handler: HandlerFunc(func(context.Context, commerce.OutboxEvent) error {
+			attempts++
+			if attempts == 1 {
+				return errors.New("provider timeout")
+			}
+			return nil
+		}),
+	}
+
+	firstAck := &fakeAcknowledger{}
+	if err := consumer.ProcessDelivery(context.Background(), deliveryForTest(t, firstAck, event)); err == nil {
+		t.Fatal("first ProcessDelivery must return handler error")
+	}
+	secondAck := &fakeAcknowledger{}
+	if err := consumer.ProcessDelivery(context.Background(), deliveryForTest(t, secondAck, event)); err != nil {
+		t.Fatalf("second ProcessDelivery returned error: %v", err)
+	}
+
+	if attempts != 2 {
+		t.Fatalf("handler attempts = %d, want 2", attempts)
+	}
+	if firstAck.nacked != 1 {
+		t.Fatalf("first delivery nacks = %d, want 1", firstAck.nacked)
+	}
+	if secondAck.acked != 1 {
+		t.Fatalf("second delivery acks = %d, want 1", secondAck.acked)
+	}
+}
+
 func TestConsumerExtractsTraceparentAndCreatesConsumeSpan(t *testing.T) {
 	recorder := tracetest.NewSpanRecorder()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))

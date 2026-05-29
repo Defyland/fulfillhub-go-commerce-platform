@@ -181,6 +181,16 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if !firstInbox || secondInbox {
 		t.Fatalf("inbox dedupe = (%v, %v), want (true, false)", firstInbox, secondInbox)
 	}
+	if err := store.ReleaseInboxMessage(ctx, "inventory.reserve", event); err != nil {
+		t.Fatalf("release inbox message: %v", err)
+	}
+	afterReleaseInbox, err := store.RecordInboxMessage(ctx, "inventory.reserve", event)
+	if err != nil {
+		t.Fatalf("record inbox after release: %v", err)
+	}
+	if !afterReleaseInbox {
+		t.Fatal("inbox record after release must be treated as new")
+	}
 	for _, name := range []string{
 		"postgres.insert_order",
 		"postgres.get_order",
@@ -188,6 +198,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		"postgres.pending_outbox_events",
 		"postgres.mark_outbox_published",
 		"postgres.record_inbox_message",
+		"postgres.release_inbox_message",
 	} {
 		if !hasSpan(recorder.Ended(), name) {
 			t.Fatalf("expected span %q in postgres integration", name)

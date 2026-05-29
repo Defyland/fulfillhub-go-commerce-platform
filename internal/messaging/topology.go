@@ -10,6 +10,7 @@ const (
 	InventoryReserveQueue   = "inventory.reserve"
 	PaymentsAuthorizeQueue  = "payments.authorize"
 	ShipmentsCreateQueue    = "shipments.create"
+	OrdersFinalizeQueue     = "orders.finalize"
 	OrdersCompensateQueue   = "orders.compensate"
 	NotificationsEmailQueue = "notifications.email"
 )

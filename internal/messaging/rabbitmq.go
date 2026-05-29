@@ -134,6 +134,7 @@ func DeclareTopology(channel *amqp.Channel) error {
 		InventoryReserveQueue:   {"order.created"},
 		PaymentsAuthorizeQueue:  {"inventory.reserved"},
 		ShipmentsCreateQueue:    {"payment.authorized"},
+		OrdersFinalizeQueue:     {"shipment.created"},
 		OrdersCompensateQueue:   {"inventory.rejected", "payment.failed", "shipment.failed"},
 		NotificationsEmailQueue: {"order.completed", "order.cancelled"},
 	}

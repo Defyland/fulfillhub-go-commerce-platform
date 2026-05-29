@@ -28,7 +28,8 @@
 - Redis-backed rate limiting protects write traffic when enabled.
 - Structured logs include request and correlation IDs without logging payment tokens.
 - HTTP and RabbitMQ publish/consume spans propagate W3C `traceparent` for incident correlation.
-- `order.create` and `order.cancel_requested` audit logs are written with actor and correlation metadata.
+- `order.create`, `order.cancel_requested`, and worker-driven `order.completed`
+  audit logs are written with actor and correlation metadata.
 - DLQ replay requires `DATABASE_URL` and `OPS_ACTOR_ID`, then records durable
   `dlq.replay` audit details for success and failure attempts.
 - Operations JWTs are validated with HS256, expiry, subject, and `operations` or `ops` role claims.

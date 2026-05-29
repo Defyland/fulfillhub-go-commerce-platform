@@ -10,6 +10,7 @@ sequenceDiagram
   participant Inventory
   participant Payment
   participant Shipment
+  participant Orders as Orders Finalizer
 
   Merchant->>API: POST /api/v1/orders
   API->>DB: insert order + items + outbox event
@@ -17,16 +18,19 @@ sequenceDiagram
   Relay->>DB: poll unpublished outbox rows
   Relay->>MQ: publish order.created
   MQ->>Inventory: consume order.created
-  Inventory->>DB: reserve stock + outbox event
   Inventory->>MQ: publish inventory.reserved
   MQ->>Payment: consume inventory.reserved
-  Payment->>DB: persist authorization + outbox event
   Payment->>MQ: publish payment.authorized
   MQ->>Shipment: consume payment.authorized
-  Shipment->>DB: create shipment + outbox event
   Shipment->>MQ: publish shipment.created
-  MQ->>API: project saga completion
+  MQ->>Orders: consume shipment.created
+  Orders->>DB: update order completed + outbox event
+  Relay->>MQ: publish order.completed
 ```
+
+The current worker executable implements the happy path above. Durable
+inventory, payment, shipment, and compensation projections are planned as the
+next worker slices.
 
 Compensation rules:
 

@@ -77,7 +77,7 @@ func (c Consumer) ProcessDelivery(ctx context.Context, delivery amqp.Delivery) (
 	}
 
 	if err := c.Handler.HandleEvent(ctx, event); err != nil {
-		return errors.Join(fmt.Errorf("handle delivery: %w", err), nackDelivery(delivery))
+		return errors.Join(fmt.Errorf("handle delivery: %w", err), releaseInbox(ctx, c.Inbox, consumerName, event), nackDelivery(delivery))
 	}
 	return ackDelivery(delivery)
 }
@@ -126,6 +126,17 @@ func ackDelivery(delivery amqp.Delivery) error {
 func nackDelivery(delivery amqp.Delivery) error {
 	if err := delivery.Nack(false, false); err != nil {
 		return fmt.Errorf("nack delivery: %w", err)
+	}
+	return nil
+}
+
+func releaseInbox(ctx context.Context, inbox Inbox, consumerName string, event commerce.OutboxEvent) error {
+	releasable, ok := inbox.(ReleasableInbox)
+	if !ok {
+		return nil
+	}
+	if err := releasable.Release(ctx, consumerName, event); err != nil {
+		return fmt.Errorf("release inbox message: %w", err)
 	}
 	return nil
 }

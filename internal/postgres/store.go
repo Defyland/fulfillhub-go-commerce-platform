@@ -349,6 +349,25 @@ func (s *Store) RecordInboxMessage(ctx context.Context, consumerName string, eve
 	return recorded, nil
 }
 
+func (s *Store) ReleaseInboxMessage(ctx context.Context, consumerName string, event commerce.OutboxEvent) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.release_inbox_message", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("messaging.message.id", event.MessageID),
+		attribute.String("fulfillhub.consumer_name", consumerName),
+		attribute.String("fulfillhub.correlation_id", event.CorrelationID),
+	))
+	defer finishSpan(span, &err, "release inbox message")
+
+	if _, err := s.db.ExecContext(ctx, `
+		DELETE FROM inbox_messages
+		WHERE consumer_name = $1 AND message_id = $2
+	`, consumerName, event.MessageID); err != nil {
+		return fmt.Errorf("release inbox message: %w", err)
+	}
+	return nil
+}
+
 type queryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row

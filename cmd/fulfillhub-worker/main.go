@@ -1,0 +1,158 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log/slog"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/fulfillment"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+)
+
+type settings struct {
+	databaseURL  string
+	rabbitURL    string
+	queue        string
+	consumerName string
+}
+
+func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	shutdownTracing, err := configureTracing(logger)
+	if err != nil {
+		fatal(logger, "configure tracing", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(ctx); err != nil {
+			logger.Error("shutdown tracing", "error", err)
+		}
+	}()
+
+	cfg, err := loadSettings()
+	if err != nil {
+		fatal(logger, "load settings", err)
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	store, err := postgres.Open(ctx, cfg.databaseURL)
+	if err != nil {
+		fatal(logger, "open postgres", err)
+	}
+	defer store.Close()
+	if err := postgres.RunMigrations(ctx, store.DB()); err != nil {
+		fatal(logger, "run postgres migrations", err)
+	}
+
+	publisher, err := messaging.NewRabbitPublisher(cfg.rabbitURL)
+	if err != nil {
+		fatal(logger, "create rabbit publisher", err)
+	}
+	defer publisher.Close()
+
+	rabbitConsumer, err := messaging.NewRabbitConsumer(cfg.rabbitURL)
+	if err != nil {
+		fatal(logger, "create rabbit consumer", err)
+	}
+	defer rabbitConsumer.Close()
+
+	handler, err := fulfillment.HandlerForQueue(cfg.queue, fulfillment.Dependencies{
+		Publisher: publisher,
+		Orders:    store,
+	})
+	if err != nil {
+		fatal(logger, "create worker handler", err)
+	}
+
+	deliveries, err := rabbitConsumer.Deliveries(cfg.queue, cfg.consumerName)
+	if err != nil {
+		fatal(logger, "start queue consumer", err)
+	}
+
+	consumer := messaging.Consumer{
+		Queue:        cfg.queue,
+		ConsumerName: cfg.consumerName,
+		Inbox:        messaging.PersistentInbox{Recorder: store},
+		Handler:      handler,
+	}
+
+	logger.Info("starting fulfillhub worker", "queue", cfg.queue, "consumer_name", cfg.consumerName)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case delivery, ok := <-deliveries:
+			if !ok {
+				logger.Error("rabbitmq deliveries channel closed", "queue", cfg.queue)
+				return
+			}
+			if err := consumer.ProcessDelivery(ctx, delivery); err != nil {
+				logger.Error(
+					"process rabbitmq delivery",
+					"error", err,
+					"queue", cfg.queue,
+					"message_id", delivery.MessageId,
+					"routing_key", delivery.RoutingKey,
+				)
+			}
+		}
+	}
+}
+
+func loadSettings() (settings, error) {
+	cfg := settings{
+		databaseURL:  os.Getenv("DATABASE_URL"),
+		rabbitURL:    os.Getenv("RABBITMQ_URL"),
+		queue:        os.Getenv("WORKER_QUEUE"),
+		consumerName: os.Getenv("CONSUMER_NAME"),
+	}
+	if cfg.databaseURL == "" {
+		return settings{}, fmt.Errorf("DATABASE_URL is required")
+	}
+	if cfg.rabbitURL == "" {
+		return settings{}, fmt.Errorf("RABBITMQ_URL is required")
+	}
+	if cfg.queue == "" {
+		cfg.queue = messaging.InventoryReserveQueue
+	}
+	if cfg.consumerName == "" {
+		cfg.consumerName = cfg.queue
+	}
+	return cfg, nil
+}
+
+func configureTracing(logger *slog.Logger) (func(context.Context) error, error) {
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	if os.Getenv("OTEL_TRACES_EXPORTER") != "stdout" {
+		return func(context.Context) error { return nil }, nil
+	}
+	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	if err != nil {
+		return nil, err
+	}
+	provider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
+	otel.SetTracerProvider(provider)
+	logger.Info("otel tracing enabled", "exporter", "stdout")
+	return provider.Shutdown, nil
+}
+
+func fatal(logger *slog.Logger, message string, err error) {
+	if err != nil {
+		logger.Error(message, "error", err)
+	} else {
+		logger.Error(message)
+	}
+	os.Exit(1)
+}

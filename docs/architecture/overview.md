@@ -1,6 +1,6 @@
 # Architecture Overview
 
-FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store for fast tests, switches to PostgreSQL-backed order/outbox persistence when `DATABASE_URL` is configured, includes a RabbitMQ outbox relay process, and enables Redis-backed rate limiting when `REDIS_URL` is configured.
+FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store for fast tests, switches to PostgreSQL-backed order/outbox persistence when `DATABASE_URL` is configured, includes RabbitMQ relay and worker processes, and enables Redis-backed rate limiting when `REDIS_URL` is configured.
 
 ## System context
 
@@ -11,8 +11,9 @@ flowchart LR
   api --> pg["PostgreSQL"]
   api --> redis["Redis"]
   api --> broker["RabbitMQ"]
+  broker --> workers["Fulfillment workers"]
+  workers --> pg
   broker --> notifier["Notification workers"]
-  broker --> reporting["Analytics and reporting consumers"]
   api --> otel["OpenTelemetry collector"]
   otel --> prom["Prometheus"]
   prom --> grafana["Grafana dashboards"]
@@ -37,7 +38,8 @@ Current status:
 - PostgreSQL persistence is implemented.
 - RabbitMQ relay code is implemented.
 - RabbitMQ consumer primitives are implemented with trace continuation, inbox idempotency, and ack/nack behavior.
-- Inventory, payment, shipment, and notification worker executables are planned.
+- The worker executable advances the inventory, payment, shipment, and order-completion happy path.
+- Durable inventory, payment, shipment, compensation, and notification projections are planned.
 
 ## Request lifecycle
 
@@ -48,7 +50,8 @@ Current status:
 5. With `DATABASE_URL`, order state and outbox rows are committed in PostgreSQL.
 6. `cmd/fulfillhub-outbox-relay` publishes pending outbox rows to RabbitMQ.
 7. RabbitMQ consumers can continue trace context, record inbox deduplication, and acknowledge or dead-letter deliveries.
-8. Future worker executables will attach fulfillment handlers and project downstream outcomes.
+8. `cmd/fulfillhub-worker` advances the happy path through inventory, payment, shipment, and order completion handlers.
+9. Future worker slices will persist inventory, payment, shipment, notification, and compensation projections.
 
 ## Observability model
 
@@ -70,6 +73,8 @@ Current status:
 The full local stack should run via Docker Compose with:
 
 - one Go API container
+- one outbox relay container
+- fulfillment worker containers
 - PostgreSQL
 - RabbitMQ
 - Redis

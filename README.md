@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 3 operations slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher topology, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed resource profiling remains the main pending performance artifact.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed resource profiling remains the main pending performance artifact.
 
 ## What is this product?
 
@@ -100,13 +100,13 @@ The API surface is versioned under `/api/v1` and covers:
 
 ## Async or event architecture
 
-FulfillHub treats asynchronous flow as a first-class concern. The current implementation records outbox events and ships a relay process that publishes pending events to RabbitMQ.
+FulfillHub treats asynchronous flow as a first-class concern. The current implementation records order outbox events, ships a relay process that publishes pending events to RabbitMQ, and provides a worker executable for the fulfillment happy path.
 
 - Order acceptance emits `order.created`
-- Inventory module consumes reserve requests and emits either `inventory.reserved` or `inventory.rejected`
-- Payment module emits `payment.authorized` or `payment.failed`
-- Shipment module emits `shipment.created` or `shipment.failed`
-- Order orchestrator finalizes the saga with `order.completed` or `order.cancelled`
+- Inventory worker consumes reserve requests and emits `inventory.reserved`
+- Payment worker consumes inventory reservations and emits `payment.authorized`
+- Shipment worker consumes payment authorizations and emits `shipment.created`
+- Order finalizer consumes shipment creation, durably marks the order `completed`, and writes `order.completed` to the outbox
 - Consumer idempotency is modeled through inbox deduplication, with retry queues and DLQ routing declared in the RabbitMQ topology
 
 The message catalog and routing design are documented in [docs/events/catalog.md](./docs/events/catalog.md) and [docs/diagrams/order-saga-sequence.md](./docs/diagrams/order-saga-sequence.md).
@@ -135,6 +135,7 @@ The current implementation includes Go tests for:
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
 - RabbitMQ consumer trace propagation, inbox deduplication, and ack/nack behavior
+- fulfillment worker happy-path progression through inventory, payment, shipment, and order completion
 
 The remaining planned performance layer is compose-backed resource profiling for
 PostgreSQL, RabbitMQ, Redis, and API memory under the same k6 scenarios.
@@ -202,7 +203,7 @@ The current threat model and endpoint authorization matrix live in:
 - Prefer RabbitMQ over Kafka because command-style routing, retries, and queue ownership are central here
 - Use orchestration-style sagas because the order lifecycle needs explicit operational visibility
 - Keep OpenAPI contract-first to stabilize integrations as handlers evolve
-- Defer carrier and payment provider implementation details until the fulfillment worker slice
+- Keep the first worker slice provider-light; durable carrier, payment, and inventory projections come after the event flow is proven
 
 The most important architecture decisions are recorded in:
 
@@ -254,6 +255,17 @@ DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=d
 RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
 OTEL_TRACES_EXPORTER='stdout' \
   go run ./cmd/fulfillhub-outbox-relay
+```
+
+Run one worker process for a queue:
+
+```sh
+DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
+RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
+WORKER_QUEUE='inventory.reserve' \
+CONSUMER_NAME='inventory-worker' \
+OTEL_TRACES_EXPORTER='stdout' \
+  go run ./cmd/fulfillhub-worker
 ```
 
 Replay a DLQ queue explicitly:
@@ -348,4 +360,4 @@ Runbook detail lives in [docs/runbooks/incident-response.md](./docs/runbooks/inc
 2. Phase 1: Go workspace bootstrap, HTTP API slice, in-memory outbox, request tests, authorization tests, native benchmark, and Docker build
 3. Phase 2: PostgreSQL schema, transactional outbox persistence, RabbitMQ relay, inbox deduplication, and failure simulations
 4. Phase 3: k6 scripts, dashboards, DLQ replay tooling, Redis rate limiting, and provider adapters
-5. Phase 4: compose-backed performance profiling, full trace export, and workerized fulfillment saga execution
+5. Phase 4: workerized fulfillment happy path, full trace propagation, and compose-backed performance profiling

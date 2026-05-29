@@ -54,9 +54,17 @@ One transaction must:
 1. insert `audit_logs` row for `dlq.replay`
 2. include queue, target routing key, replay limit, replayed count, status, and error details
 
+### Order completion
+
+The current worker happy path finalizes orders in one transaction:
+
+1. update `orders.status` to `completed`
+2. insert `outbox_events` row for `order.completed`
+3. insert `audit_logs` row for `order.completed`
+
 ### Inventory reservation
 
-One transaction must:
+The durable inventory projection is planned. Once implemented, one transaction must:
 
 1. lock `inventory_items` row with `SELECT ... FOR UPDATE`
 2. decrement available quantity and increment reserved quantity

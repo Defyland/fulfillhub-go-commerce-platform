@@ -29,6 +29,7 @@
 | `inventory.reserve` | `order.created` | `inventory.reserve.retry.5s` | `inventory.reserve.dlq` |
 | `payments.authorize` | `inventory.reserved` | `payments.authorize.retry.15s` | `payments.authorize.dlq` |
 | `shipments.create` | `payment.authorized` | `shipments.create.retry.30s` | `shipments.create.dlq` |
+| `orders.finalize` | `shipment.created` | `orders.finalize.retry.15s` | `orders.finalize.dlq` |
 | `orders.compensate` | `inventory.rejected`, `payment.failed`, `shipment.failed` | `orders.compensate.retry.15s` | `orders.compensate.dlq` |
 | `notifications.email` | `order.completed`, `order.cancelled` | `notifications.email.retry.60s` | `notifications.email.dlq` |
 
@@ -51,6 +52,10 @@
 - Inbox idempotency is implemented for memory tests and PostgreSQL-backed consumers.
 - RabbitMQ consumers extract `traceparent`, create consume spans, record inbox
   entries before handlers run, ack duplicates, and nack handler failures.
+- `cmd/fulfillhub-worker` consumes inventory, payment, shipment, and order
+  finalization queues for the current happy-path saga.
+- The order finalizer updates the order to `completed` and writes
+  `order.completed` through the transactional outbox.
 - `TestRabbitPublisherIntegration` verifies live RabbitMQ publish and route delivery when `RABBITMQ_URL` is available.
 
 ## Example event payload
