@@ -68,6 +68,9 @@ func main() {
 	if outboxBacklog, ok := store.(api.OutboxBacklogProvider); ok {
 		options.OutboxBacklog = outboxBacklog
 	}
+	if sagaMetrics, ok := store.(api.SagaMetricsProvider); ok {
+		options.SagaMetrics = sagaMetrics
+	}
 	if rabbitURL := os.Getenv("RABBITMQ_URL"); rabbitURL != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		inspector, err := newQueueInspectorWithRetry(ctx, rabbitURL, logger)

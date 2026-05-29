@@ -828,6 +828,59 @@ func (s *Store) PendingOutboxCount(ctx context.Context) (count int, err error) {
 	return count, nil
 }
 
+func (s *Store) OldestPendingOutboxAgeSeconds(ctx context.Context) (ageSeconds float64, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.oldest_pending_outbox_age", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+	))
+	defer finishSpan(span, &err, "measure oldest pending outbox age")
+
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(EXTRACT(EPOCH FROM now() - MIN(occurred_at)), 0)
+		FROM outbox_events
+		WHERE published_at IS NULL
+	`).Scan(&ageSeconds); err != nil {
+		return 0, fmt.Errorf("measure oldest pending outbox age: %w", err)
+	}
+	span.SetAttributes(attribute.Float64("fulfillhub.outbox.oldest_pending_age_seconds", ageSeconds))
+	return ageSeconds, nil
+}
+
+func (s *Store) OrderStatusCounts(ctx context.Context) (counts map[commerce.OrderStatus]int, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.order_status_counts", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+	))
+	defer finishSpan(span, &err, "count orders by status")
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT status, COUNT(*)
+		FROM orders
+		GROUP BY status
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("count orders by status: %w", err)
+	}
+	defer rows.Close()
+
+	counts = make(map[commerce.OrderStatus]int, len(commerce.ValidOrderStatuses()))
+	for _, status := range commerce.ValidOrderStatuses() {
+		counts[status] = 0
+	}
+	for rows.Next() {
+		var status commerce.OrderStatus
+		var count int
+		if err := rows.Scan(&status, &count); err != nil {
+			return nil, fmt.Errorf("scan order status count: %w", err)
+		}
+		counts[status] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate order status counts: %w", err)
+	}
+	return counts, nil
+}
+
 func (s *Store) MarkOutboxPublished(ctx context.Context, messageID string, publishedAt time.Time) (err error) {
 	ctx = contextOrBackground(ctx)
 	ctx, span := postgresTracer().Start(ctx, "postgres.mark_outbox_published", trace.WithAttributes(

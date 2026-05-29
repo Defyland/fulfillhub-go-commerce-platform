@@ -328,6 +328,40 @@ func (s *MemoryStore) PendingOutboxCount(_ context.Context) (int, error) {
 	return count, nil
 }
 
+func (s *MemoryStore) OldestPendingOutboxAgeSeconds(_ context.Context) (float64, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var oldest *OutboxEvent
+	for idx := range s.outbox {
+		event := &s.outbox[idx]
+		if _, ok := s.publishedOutbox[event.MessageID]; ok {
+			continue
+		}
+		if oldest == nil || event.OccurredAt.Before(oldest.OccurredAt) {
+			oldest = event
+		}
+	}
+	if oldest == nil {
+		return 0, nil
+	}
+	return time.Since(oldest.OccurredAt).Seconds(), nil
+}
+
+func (s *MemoryStore) OrderStatusCounts(_ context.Context) (map[OrderStatus]int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	counts := make(map[OrderStatus]int, len(ValidOrderStatuses()))
+	for _, status := range ValidOrderStatuses() {
+		counts[status] = 0
+	}
+	for _, order := range s.orders {
+		counts[order.Status]++
+	}
+	return counts, nil
+}
+
 func (s *MemoryStore) MarkOutboxPublished(_ context.Context, messageID string, publishedAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

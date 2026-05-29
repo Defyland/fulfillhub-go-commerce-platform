@@ -39,6 +39,7 @@ type Server struct {
 	opsAudience   string
 	queueMetrics  messaging.QueueMetricsProvider
 	outboxMetrics OutboxBacklogProvider
+	sagaMetrics   SagaMetricsProvider
 	metricsToken  string
 	readiness     map[string]ReadinessChecker
 }
@@ -49,6 +50,11 @@ type RateLimiter interface {
 
 type OutboxBacklogProvider interface {
 	PendingOutboxCount(ctx context.Context) (int, error)
+	OldestPendingOutboxAgeSeconds(ctx context.Context) (float64, error)
+}
+
+type SagaMetricsProvider interface {
+	OrderStatusCounts(ctx context.Context) (map[commerce.OrderStatus]int, error)
 }
 
 type ReadinessChecker interface {
@@ -72,6 +78,7 @@ type Options struct {
 	OpsJWTAudience        string
 	QueueMetrics          messaging.QueueMetricsProvider
 	OutboxBacklog         OutboxBacklogProvider
+	SagaMetrics           SagaMetricsProvider
 	MetricsBearerToken    string
 	ReadinessChecks       map[string]ReadinessChecker
 }
@@ -180,6 +187,7 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 		opsAudience:   strings.TrimSpace(options.OpsJWTAudience),
 		queueMetrics:  options.QueueMetrics,
 		outboxMetrics: options.OutboxBacklog,
+		sagaMetrics:   options.SagaMetrics,
 		metricsToken:  strings.TrimSpace(options.MetricsBearerToken),
 		readiness:     readiness,
 	}
@@ -677,6 +685,7 @@ func (s *Server) writeMetrics(ctx context.Context, w http.ResponseWriter) {
 	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_http_errors_total counter\n")
 	_, _ = fmt.Fprintf(w, "fulfillhub_http_errors_total %d\n", s.metrics.errors.Load())
 	s.writeOutboxMetrics(ctx, w)
+	s.writeSagaMetrics(ctx, w)
 	if s.queueMetrics == nil {
 		return
 	}
@@ -716,6 +725,32 @@ func (s *Server) writeOutboxMetrics(ctx context.Context, w http.ResponseWriter) 
 	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_outbox_unpublished_total Unpublished outbox events waiting for relay.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_outbox_unpublished_total gauge\n")
 	_, _ = fmt.Fprintf(w, "fulfillhub_outbox_unpublished_total %d\n", count)
+	ageSeconds, err := s.outboxMetrics.OldestPendingOutboxAgeSeconds(ctx)
+	if err != nil {
+		return
+	}
+	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_outbox_oldest_unpublished_age_seconds Age in seconds of the oldest unpublished outbox event.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_outbox_oldest_unpublished_age_seconds gauge\n")
+	_, _ = fmt.Fprintf(w, "fulfillhub_outbox_oldest_unpublished_age_seconds %.3f\n", ageSeconds)
+}
+
+func (s *Server) writeSagaMetrics(ctx context.Context, w http.ResponseWriter) {
+	if s.sagaMetrics == nil {
+		return
+	}
+	counts, err := s.sagaMetrics.OrderStatusCounts(ctx)
+	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_order_status_metrics_up Whether order status metrics were collected successfully.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_order_status_metrics_up gauge\n")
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "fulfillhub_order_status_metrics_up 0\n")
+		return
+	}
+	_, _ = fmt.Fprintf(w, "fulfillhub_order_status_metrics_up 1\n")
+	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_orders_total Orders grouped by lifecycle status.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_orders_total gauge\n")
+	for _, status := range commerce.ValidOrderStatuses() {
+		_, _ = fmt.Fprintf(w, "fulfillhub_orders_total{status=\"%s\"} %d\n", prometheusLabelValue(string(status)), counts[status])
+	}
 }
 
 func prometheusLabelValue(value string) string {

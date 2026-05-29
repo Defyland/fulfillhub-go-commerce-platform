@@ -197,7 +197,7 @@ func TestMetricsIncludesRabbitMQQueueGauges(t *testing.T) {
 
 func TestMetricsIncludesOutboxBacklogGauge(t *testing.T) {
 	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
-		OutboxBacklog: fakeOutboxBacklog{count: 3},
+		OutboxBacklog: fakeOutboxBacklog{count: 3, oldestAgeSeconds: 12.5},
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
@@ -209,6 +209,33 @@ func TestMetricsIncludesOutboxBacklogGauge(t *testing.T) {
 	for _, want := range []string{
 		"fulfillhub_outbox_metrics_up 1",
 		"fulfillhub_outbox_unpublished_total 3",
+		"fulfillhub_outbox_oldest_unpublished_age_seconds 12.500",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestMetricsIncludesOrderStatusGauges(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		SagaMetrics: fakeSagaMetrics{counts: map[commerce.OrderStatus]int{
+			commerce.StatusPendingFulfillment: 2,
+			commerce.StatusCompleted:          5,
+		}},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"fulfillhub_order_status_metrics_up 1",
+		`fulfillhub_orders_total{status="pending_fulfillment"} 2`,
+		`fulfillhub_orders_total{status="completed"} 5`,
+		`fulfillhub_orders_total{status="failed"} 0`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("metrics body missing %q:\n%s", want, body)
@@ -730,6 +757,8 @@ func createOrder(t testing.TB, server http.Handler, apiKey, idempotencyKey strin
 func recordShipment(t testing.TB, store *commerce.MemoryStore, service *commerce.Service, orderID string) string {
 	t.Helper()
 	created := service.OutboxEvents()[0]
+	advanceOrderStatusForAPITest(t, store, orderID, created.MerchantID, commerce.StatusInventoryReserved, created.CorrelationID)
+	advanceOrderStatusForAPITest(t, store, orderID, created.MerchantID, commerce.StatusPaymentAuthorized, created.CorrelationID)
 	shipmentID := "shp_api_test"
 	occurredAt := time.Date(2026, 5, 29, 15, 30, 0, 0, time.UTC)
 	event := commerce.OutboxEvent{
@@ -763,6 +792,32 @@ func recordShipment(t testing.TB, store *commerce.MemoryStore, service *commerce
 		t.Fatalf("record shipment: %v", err)
 	}
 	return shipmentID
+}
+
+func advanceOrderStatusForAPITest(t testing.TB, store *commerce.MemoryStore, orderID, merchantID string, status commerce.OrderStatus, correlationID string) {
+	t.Helper()
+	now := time.Date(2026, 5, 29, 15, 20, 0, 0, time.UTC)
+	event := commerce.OutboxEvent{
+		MessageID:     "msg_api_" + string(status),
+		CorrelationID: correlationID,
+		CausationID:   "msg_api_test_causation",
+		EventType:     "test.status_advanced",
+		OrderID:       orderID,
+		MerchantID:    merchantID,
+		OccurredAt:    now,
+	}
+	audit := commerce.AuditLog{
+		MerchantID:    merchantID,
+		OrderID:       orderID,
+		ActorType:     "test",
+		ActorID:       "test",
+		Action:        "test.status_advanced",
+		CorrelationID: correlationID,
+		CreatedAt:     now,
+	}
+	if _, err := store.UpdateOrderStatus(context.Background(), orderID, status, now, event, audit); err != nil {
+		t.Fatalf("advance order to %s: %v", status, err)
+	}
 }
 
 func decodeOrderID(t testing.TB, rec *httptest.ResponseRecorder) string {
@@ -843,12 +898,26 @@ func (m fakeQueueMetrics) QueueDepths(context.Context) ([]messaging.QueueDepth, 
 }
 
 type fakeOutboxBacklog struct {
-	count int
-	err   error
+	count            int
+	oldestAgeSeconds float64
+	err              error
 }
 
 func (m fakeOutboxBacklog) PendingOutboxCount(context.Context) (int, error) {
 	return m.count, m.err
+}
+
+func (m fakeOutboxBacklog) OldestPendingOutboxAgeSeconds(context.Context) (float64, error) {
+	return m.oldestAgeSeconds, m.err
+}
+
+type fakeSagaMetrics struct {
+	counts map[commerce.OrderStatus]int
+	err    error
+}
+
+func (m fakeSagaMetrics) OrderStatusCounts(context.Context) (map[commerce.OrderStatus]int, error) {
+	return m.counts, m.err
 }
 
 func assertSpanAttribute(t testing.TB, span sdktrace.ReadOnlySpan, key, want string) {
