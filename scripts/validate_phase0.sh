@@ -39,6 +39,7 @@ openapi.yaml
 .tool-versions
 Dockerfile
 go.mod
+go.sum
 cmd/fulfillhub-api/main.go
 internal/api/server.go
 internal/api/server_test.go
@@ -46,6 +47,10 @@ internal/commerce/model.go
 internal/commerce/service.go
 internal/commerce/service_test.go
 internal/commerce/store.go
+internal/postgres/migrations.go
+internal/postgres/migrations_test.go
+internal/postgres/store.go
+internal/postgres/migrations/001_init.sql
 docs/engineering-baseline.md
 docs/api/request-response-examples.md
 docs/api/error-format.md

@@ -24,8 +24,8 @@ go test -bench=. ./internal/api -run '^$'
 
 | Benchmark | Iterations | ns/op |
 | --- | ---: | ---: |
-| `BenchmarkCreateOrder-10` | 78985 | 15275 |
+| `BenchmarkCreateOrder-10` | 57562 | 18243 |
 
 ## Interpretation
 
-The first executable slice can create and validate an order through the HTTP layer in roughly 16 microseconds per operation in-process. The next performance step is a k6 smoke/load run against `go run ./cmd/fulfillhub-api` so latency percentiles and throughput can be measured over the network path.
+The first executable slice can create and validate an order through the HTTP layer in roughly 18 microseconds per operation in-process. The next performance step is a k6 smoke/load run against `go run ./cmd/fulfillhub-api` so latency percentiles and throughput can be measured over the network path.

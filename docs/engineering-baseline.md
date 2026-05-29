@@ -1,6 +1,6 @@
 # FulfillHub Engineering Baseline
 
-This repository applies the portfolio-wide engineering spec to a commerce orchestration domain. The current state includes a Phase 1 executable Go slice plus the product narrative, architecture decisions, contracts, quality gates, and operational expectations needed for the next persistence and messaging phases.
+This repository applies the portfolio-wide engineering spec to a commerce orchestration domain. The current state includes an executable Go API slice, PostgreSQL persistence, product narrative, architecture decisions, contracts, quality gates, and operational expectations needed for the next messaging phase.
 
 ## Required artifacts in this repository
 
@@ -35,13 +35,13 @@ The current executable slice includes:
 - HTTP order creation, lookup, and cancellation handlers
 - health, readiness, and metrics endpoints
 - in-memory order store and outbox event recording
+- embedded PostgreSQL migrations and SQL-backed order/outbox persistence
 - unit, request, authorization, validation, and native benchmark coverage
 
 It intentionally does not include yet:
 
-- database migrations
 - Docker Compose runtime
-- live RabbitMQ, PostgreSQL, or Redis integrations
+- live RabbitMQ or Redis integrations
 - k6 network load test results
 
-The next phase must add durable persistence and messaging while preserving the contracts and decisions already documented here.
+The next phase must add broker-backed messaging while preserving the contracts and decisions already documented here.

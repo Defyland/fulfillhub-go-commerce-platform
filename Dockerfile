@@ -1,7 +1,7 @@
 FROM golang:1.23.3-alpine AS build
 
 WORKDIR /src
-COPY go.mod ./
+COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
 RUN go build -o /out/fulfillhub-api ./cmd/fulfillhub-api

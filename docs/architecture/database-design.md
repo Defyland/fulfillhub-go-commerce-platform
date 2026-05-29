@@ -1,6 +1,6 @@
 # Database Design
 
-PostgreSQL is the planned source of truth for all consistency-sensitive flows.
+PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The service still supports the in-memory store for fast local tests, but embedded migrations and a SQL-backed order store are implemented.
 
 ## Primary tables
 
@@ -61,7 +61,7 @@ Release of inventory or voiding payment must follow the same pattern: mutate sta
 
 ## Migration strategy
 
-- Forward-only migrations in Phase 1
+- Embedded forward-only migrations under `internal/postgres/migrations/`
 - Every migration must declare rollback notes even if rollback is manual
 - Dangerous backfills must run in batches and be documented in runbooks
 

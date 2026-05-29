@@ -28,12 +28,12 @@ func (e ValidationError) Error() string {
 }
 
 type Service struct {
-	store   *MemoryStore
+	store   Store
 	counter atomic.Uint64
 	clock   func() time.Time
 }
 
-func NewService(store *MemoryStore) *Service {
+func NewService(store Store) *Service {
 	return &Service{
 		store: store,
 		clock: func() time.Time {

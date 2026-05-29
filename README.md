@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 1 executable slice. The repository now includes a Go HTTP API, in-memory domain store, request tests, authorization tests, a native benchmark, Docker build validation, and documentation baseline. PostgreSQL, RabbitMQ, Redis, and k6 load tests remain planned next steps.
+> Status: Phase 2 persistence slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, request tests, authorization tests, database tests, a native benchmark, Docker build validation, and documentation baseline. RabbitMQ, Redis, and k6 load tests remain planned next steps.
 
 ## What is this product?
 
@@ -45,7 +45,7 @@ The current implementation starts as a Go modular monolith with strongly isolate
 
 - HTTP API entrypoint for merchant and operations access
 - Domain modules for orders, inventory, payments, shipments, notifications, and reporting
-- In-memory store for the first executable slice, with PostgreSQL planned for transactional state, outbox, inbox, and audit logs
+- In-memory store for fast local tests and PostgreSQL for transactional state, outbox, inbox, and audit logs when `DATABASE_URL` is configured
 - In-memory outbox events for the first executable slice, with RabbitMQ planned for domain fan-out and asynchronous side effects
 - Redis planned for idempotency windows and rate-limiting primitives
 - OpenTelemetry, Prometheus, and Grafana for observability
@@ -119,7 +119,7 @@ The relational model centers on transactional consistency around orders and stoc
 - Order creation derives `merchant_id` from `X-API-Key`, not from request bodies
 - Idempotency keys protect duplicate order creation requests
 - Duplicate external order IDs are rejected per merchant
-- PostgreSQL tables, row locks, and inbox tables are planned in the next persistence phase
+- Embedded PostgreSQL migrations define orders, order items, idempotency keys, outbox events, inbox messages, and audit logs
 
 The data model, indexes, and transaction boundaries are detailed in [docs/architecture/database-design.md](./docs/architecture/database-design.md).
 
@@ -198,6 +198,13 @@ go run ./cmd/fulfillhub-api
 
 The API listens on `:8080` by default. Use `HTTP_ADDR=:9090` to choose another address.
 
+To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API applies embedded migrations and switches from the in-memory store to the PostgreSQL store.
+
+```sh
+DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
+  go run ./cmd/fulfillhub-api
+```
+
 Run the full repository validation:
 
 ```sh
@@ -212,13 +219,20 @@ Run all Go tests:
 go test ./...
 ```
 
+Run the PostgreSQL integration test when a database is available:
+
+```sh
+DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub_test?sslmode=disable' \
+  go test ./internal/postgres -run TestPostgresStoreIntegration -count=1
+```
+
 Run the native benchmark:
 
 ```sh
 go test -bench=. ./internal/api -run '^$'
 ```
 
-The GitHub Actions workflow at `.github/workflows/phase0-quality.yml` runs repository validation, `gofmt`, `go vet`, tests, benchmark smoke, markdown linting, OpenAPI validation, secret scanning, and Docker build validation.
+The GitHub Actions workflow at `.github/workflows/phase0-quality.yml` runs repository validation, `gofmt`, `go vet`, tests, PostgreSQL integration tests, benchmark smoke, markdown linting, OpenAPI validation, secret scanning, and Docker build validation.
 
 ## Failure scenarios
 

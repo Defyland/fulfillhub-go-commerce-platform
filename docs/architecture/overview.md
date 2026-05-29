@@ -1,6 +1,6 @@
 # Architecture Overview
 
-FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store and outbox so API behavior, idempotency, and tenant authorization can be tested before PostgreSQL and RabbitMQ are introduced.
+FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store for fast tests and switches to PostgreSQL-backed order/outbox persistence when `DATABASE_URL` is configured.
 
 ## System context
 
@@ -34,7 +34,8 @@ Current status:
 
 - Orders and HTTP API are implemented.
 - In-memory order storage and outbox event recording are implemented.
-- PostgreSQL persistence, RabbitMQ relay, inventory, payment, shipment, and notification workers are planned.
+- PostgreSQL persistence is implemented.
+- RabbitMQ relay, inventory, payment, shipment, and notification workers are planned.
 
 ## Request lifecycle
 
@@ -42,7 +43,7 @@ Current status:
 2. Orders module validates tenant access and request shape.
 3. Orders service stores the order, items, initial saga state, and outbox message.
 4. The current slice keeps the outbox event in memory for testability.
-5. The next persistence phase will commit order state and outbox rows in PostgreSQL.
+5. With `DATABASE_URL`, order state and outbox rows are committed in PostgreSQL.
 6. The next messaging phase will relay `order.created` to RabbitMQ and project downstream outcomes.
 
 ## Observability model

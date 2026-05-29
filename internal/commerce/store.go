@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+type Store interface {
+	InsertOrder(merchantID, idempotencyKey string, order *Order, event OutboxEvent) (*Order, bool, error)
+	GetOrder(orderID string) (*Order, error)
+	UpdateOrderStatus(orderID string, status OrderStatus, now time.Time, event OutboxEvent) (*Order, error)
+	OutboxEvents() []OutboxEvent
+}
+
 type MemoryStore struct {
 	mu                  sync.RWMutex
 	orders              map[string]*Order
@@ -99,4 +106,8 @@ func cloneOrder(order *Order) *Order {
 		clone.Shipment = &shipment
 	}
 	return &clone
+}
+
+func CloneOrderForStore(order *Order) *Order {
+	return cloneOrder(order)
 }

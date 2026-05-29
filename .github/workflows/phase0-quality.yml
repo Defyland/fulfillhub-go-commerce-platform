@@ -37,6 +37,32 @@ jobs:
       - name: Native benchmark smoke
         run: go test -bench=. -run '^$' -benchtime=1x ./internal/api
 
+  postgres-integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fulfillhub
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: fulfillhub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: PostgreSQL integration tests
+        env:
+          DATABASE_URL: postgres://fulfillhub:postgres@localhost:5432/fulfillhub_test?sslmode=disable
+        run: go test ./internal/postgres -run TestPostgresStoreIntegration -count=1
+
   docker:
     runs-on: ubuntu-latest
     steps:
