@@ -18,6 +18,10 @@ type EventHandler interface {
 	HandleEvent(ctx context.Context, event commerce.OutboxEvent) error
 }
 
+type RetryPublisher interface {
+	PublishRetry(ctx context.Context, delivery amqp.Delivery, event commerce.OutboxEvent, attempt int) error
+}
+
 type HandlerFunc func(context.Context, commerce.OutboxEvent) error
 
 func (f HandlerFunc) HandleEvent(ctx context.Context, event commerce.OutboxEvent) error {
@@ -29,6 +33,8 @@ type Consumer struct {
 	ConsumerName string
 	Inbox        Inbox
 	Handler      EventHandler
+	Retry        RetryPublisher
+	MaxRetries   int
 	Tracer       trace.Tracer
 }
 
@@ -77,7 +83,19 @@ func (c Consumer) ProcessDelivery(ctx context.Context, delivery amqp.Delivery) (
 	}
 
 	if err := c.Handler.HandleEvent(ctx, event); err != nil {
-		return errors.Join(fmt.Errorf("handle delivery: %w", err), releaseInbox(ctx, c.Inbox, consumerName, event), nackDelivery(delivery))
+		releaseErr := releaseInbox(ctx, c.Inbox, consumerName, event)
+		if releaseErr != nil {
+			return errors.Join(fmt.Errorf("handle delivery: %w", err), releaseErr, nackDelivery(delivery))
+		}
+		if c.shouldRetry(delivery) {
+			attempt := retryAttempt(delivery.Headers) + 1
+			if retryErr := c.Retry.PublishRetry(ctx, delivery, event, attempt); retryErr != nil {
+				return errors.Join(fmt.Errorf("handle delivery: %w", err), fmt.Errorf("publish retry: %w", retryErr), nackDelivery(delivery))
+			}
+			span.SetAttributes(attribute.Int("fulfillhub.retry_attempt", attempt))
+			return errors.Join(fmt.Errorf("handle delivery: %w", err), ackDelivery(delivery))
+		}
+		return errors.Join(fmt.Errorf("handle delivery: %w", err), nackDelivery(delivery))
 	}
 	return ackDelivery(delivery)
 }
@@ -97,6 +115,45 @@ func (c Consumer) consumerName() string {
 		return c.ConsumerName
 	}
 	return c.Queue
+}
+
+func (c Consumer) shouldRetry(delivery amqp.Delivery) bool {
+	return c.Retry != nil && retryAttempt(delivery.Headers) < c.maxRetries()
+}
+
+func (c Consumer) maxRetries() int {
+	if c.MaxRetries > 0 {
+		return c.MaxRetries
+	}
+	return defaultMaxRetryAttempts
+}
+
+func retryAttempt(headers amqp.Table) int {
+	value, ok := headers["fulfillhub_retry_attempt"]
+	if !ok {
+		return 0
+	}
+	switch typed := value.(type) {
+	case int:
+		return typed
+	case int8:
+		return int(typed)
+	case int16:
+		return int(typed)
+	case int32:
+		return int(typed)
+	case int64:
+		return int(typed)
+	case uint8:
+		return int(typed)
+	case uint16:
+		return int(typed)
+	case uint32:
+		return int(typed)
+	case uint64:
+		return int(typed)
+	}
+	return 0
 }
 
 func decodeDelivery(delivery amqp.Delivery) (commerce.OutboxEvent, error) {

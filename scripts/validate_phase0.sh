@@ -73,6 +73,7 @@ internal/messaging/rabbitmq_integration_test.go
 internal/messaging/relay.go
 internal/messaging/relay_test.go
 internal/messaging/topology.go
+internal/messaging/topology_test.go
 internal/observability/tracing.go
 internal/observability/tracing_test.go
 internal/postgres/migrations.go

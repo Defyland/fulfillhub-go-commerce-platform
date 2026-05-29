@@ -38,7 +38,7 @@ Current status:
 - In-memory order storage and outbox event recording are implemented.
 - PostgreSQL persistence is implemented.
 - RabbitMQ relay code is implemented.
-- RabbitMQ consumer primitives are implemented with trace continuation, inbox idempotency, and ack/nack behavior.
+- RabbitMQ consumer primitives are implemented with trace continuation, inbox idempotency, retry scheduling, and ack/nack behavior.
 - The worker executable advances the inventory, payment, shipment, notification, compensation, and order-completion paths through durable projections and outbox writes.
 
 ## Request lifecycle
@@ -49,7 +49,8 @@ Current status:
 4. The in-memory store keeps outbox events in memory for fast testability.
 5. With `DATABASE_URL`, order state and outbox rows are committed in PostgreSQL.
 6. `cmd/fulfillhub-outbox-relay` publishes pending outbox rows to RabbitMQ.
-7. RabbitMQ consumers can continue trace context, record inbox deduplication, and acknowledge or dead-letter deliveries.
+7. RabbitMQ consumers can continue trace context, record inbox deduplication,
+   schedule bounded retry delivery, and acknowledge or dead-letter deliveries.
 8. `cmd/fulfillhub-worker` persists inventory reservations, payment authorizations, and shipments, then writes the next saga event to the outbox.
 9. Compose smoke, load, stress, and spike profiling verifies the local runtime
    with outbox, ready queue, and unacknowledged queue drain.

@@ -77,6 +77,7 @@ func main() {
 		ConsumerName: cfg.consumerName,
 		Inbox:        messaging.PersistentInbox{Recorder: store},
 		Handler:      handler,
+		Retry:        rabbitConsumer,
 	}
 
 	logger.Info("starting fulfillhub worker", "queue", cfg.queue, "consumer_name", cfg.consumerName)

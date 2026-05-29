@@ -24,9 +24,11 @@ Actions:
 
 1. Identify the consumer queue with the highest DLQ growth.
 2. Inspect the most recent dead-lettered message and correlation ID.
-3. Confirm whether the error is data-related, dependency-related, or code-related.
-4. If dependency-related, restore the dependency before replaying.
-5. Replay only after the failing consumer path is verified healthy.
+3. Check the matching `*.retry.*` queue to confirm whether messages are still
+   in delayed retry or have already exhausted retry attempts.
+4. Confirm whether the error is data-related, dependency-related, or code-related.
+5. If dependency-related, restore the dependency before replaying.
+6. Replay only after the failing consumer path is verified healthy.
 
 Replay command:
 

@@ -109,7 +109,8 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
 - Order finalizer consumes shipment creation, durably marks the order `completed`, and writes `order.completed` to the outbox
 - Notification worker consumes order completion or cancellation and records a durable email notification projection
 - Compensation worker consumes inventory, payment, or shipment failure events and records durable compensation outcomes
-- Consumer idempotency is modeled through inbox deduplication, with retry queues and DLQ routing declared in the RabbitMQ topology
+- Consumer idempotency is modeled through inbox deduplication, bounded retry
+  queues, and DLQ routing in the RabbitMQ topology
 
 The message catalog and routing design are documented in [docs/events/catalog.md](./docs/events/catalog.md) and [docs/diagrams/order-saga-sequence.md](./docs/diagrams/order-saga-sequence.md).
 
@@ -136,7 +137,7 @@ The current implementation includes Go tests for:
 - operations token access
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
-- RabbitMQ consumer trace propagation, inbox deduplication, and ack/nack behavior
+- RabbitMQ consumer trace propagation, inbox deduplication, retry scheduling, and ack/nack behavior
 - fulfillment worker happy-path progression through durable inventory, payment, shipment, and order completion projections
 
 The performance layer includes compose-backed smoke, load, stress, and spike

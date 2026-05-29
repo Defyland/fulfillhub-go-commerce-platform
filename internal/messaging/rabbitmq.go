@@ -130,24 +130,30 @@ func DeclareTopology(channel *amqp.Channel) error {
 		}
 	}
 
-	bindings := map[string][]string{
-		InventoryReserveQueue:   {"order.created"},
-		PaymentsAuthorizeQueue:  {"inventory.reserved"},
-		ShipmentsCreateQueue:    {"payment.authorized"},
-		OrdersFinalizeQueue:     {"shipment.created"},
-		OrdersCompensateQueue:   {"inventory.rejected", "payment.failed", "shipment.failed"},
-		NotificationsEmailQueue: {"order.completed", "order.cancelled"},
-	}
-
-	for queue, keys := range bindings {
-		if _, err := channel.QueueDeclare(queue, true, false, false, false, amqp.Table{
+	for _, topology := range QueueTopologies() {
+		if _, err := channel.QueueDeclare(topology.Queue, true, false, false, false, amqp.Table{
 			"x-dead-letter-exchange": DLXExchange,
 		}); err != nil {
-			return fmt.Errorf("declare queue %s: %w", queue, err)
+			return fmt.Errorf("declare queue %s: %w", topology.Queue, err)
 		}
-		for _, key := range keys {
-			if err := channel.QueueBind(queue, key, DomainExchange, false, nil); err != nil {
-				return fmt.Errorf("bind queue %s to %s: %w", queue, key, err)
+		if _, err := channel.QueueDeclare(topology.RetryQueue, true, false, false, false, amqp.Table{
+			"x-message-ttl":          int32(topology.RetryTTL / time.Millisecond),
+			"x-dead-letter-exchange": DomainExchange,
+		}); err != nil {
+			return fmt.Errorf("declare retry queue %s: %w", topology.RetryQueue, err)
+		}
+		if _, err := channel.QueueDeclare(topology.DLQ, true, false, false, false, nil); err != nil {
+			return fmt.Errorf("declare dlq %s: %w", topology.DLQ, err)
+		}
+		for _, key := range topology.RoutingKeys {
+			if err := channel.QueueBind(topology.Queue, key, DomainExchange, false, nil); err != nil {
+				return fmt.Errorf("bind queue %s to %s: %w", topology.Queue, key, err)
+			}
+			if err := channel.QueueBind(topology.RetryQueue, key, RetryExchange, false, nil); err != nil {
+				return fmt.Errorf("bind retry queue %s to %s: %w", topology.RetryQueue, key, err)
+			}
+			if err := channel.QueueBind(topology.DLQ, key, DLXExchange, false, nil); err != nil {
+				return fmt.Errorf("bind dlq %s to %s: %w", topology.DLQ, key, err)
 			}
 		}
 	}

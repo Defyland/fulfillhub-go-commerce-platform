@@ -1,8 +1,11 @@
 package messaging
 
 import (
+	"context"
 	"fmt"
+	"time"
 
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -55,4 +58,46 @@ func (c *RabbitConsumer) Deliveries(queue, consumerName string) (<-chan amqp.Del
 		return nil, fmt.Errorf("consume queue %s: %w", queue, err)
 	}
 	return deliveries, nil
+}
+
+func (c *RabbitConsumer) PublishRetry(ctx context.Context, delivery amqp.Delivery, event commerce.OutboxEvent, attempt int) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	routingKey := delivery.RoutingKey
+	if routingKey == "" {
+		routingKey = RoutingKey(event.EventType)
+	}
+	headers := cloneHeaders(delivery.Headers)
+	headers["fulfillhub_retry_attempt"] = int32(attempt)
+	if err := c.channel.PublishWithContext(ctx, RetryExchange, routingKey, false, false, amqp.Publishing{
+		ContentType:   delivery.ContentType,
+		DeliveryMode:  amqp.Persistent,
+		MessageId:     firstNonEmpty(delivery.MessageId, event.MessageID),
+		CorrelationId: firstNonEmpty(delivery.CorrelationId, event.CorrelationID),
+		Timestamp:     time.Now().UTC(),
+		Type:          firstNonEmpty(delivery.Type, event.EventType),
+		Headers:       headers,
+		Body:          delivery.Body,
+	}); err != nil {
+		return fmt.Errorf("publish retry message: %w", err)
+	}
+	return nil
+}
+
+func cloneHeaders(headers amqp.Table) amqp.Table {
+	clone := amqp.Table{}
+	for key, value := range headers {
+		clone[key] = value
+	}
+	return clone
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

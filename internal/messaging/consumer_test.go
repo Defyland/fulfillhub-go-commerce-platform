@@ -114,6 +114,120 @@ func TestConsumerNacksHandlerFailure(t *testing.T) {
 	}
 }
 
+func TestConsumerPublishesRetryAndAcksHandlerFailure(t *testing.T) {
+	inbox := NewMemoryInbox()
+	ack := &fakeAcknowledger{}
+	retry := &fakeRetryPublisher{}
+	event := commerce.OutboxEvent{
+		MessageID:     "msg_1",
+		CorrelationID: "cor_1",
+		EventType:     "order.created",
+	}
+	consumer := Consumer{
+		Queue:        InventoryReserveQueue,
+		ConsumerName: "inventory-worker",
+		Inbox:        inbox,
+		Retry:        retry,
+		Handler: HandlerFunc(func(context.Context, commerce.OutboxEvent) error {
+			return errors.New("provider timeout")
+		}),
+	}
+
+	err := consumer.ProcessDelivery(context.Background(), deliveryForTest(t, ack, event))
+	if err == nil {
+		t.Fatal("ProcessDelivery must return handler error")
+	}
+	if retry.calls != 1 {
+		t.Fatalf("retry publishes = %d, want 1", retry.calls)
+	}
+	if retry.attempt != 1 {
+		t.Fatalf("retry attempt = %d, want 1", retry.attempt)
+	}
+	if retry.event.MessageID != event.MessageID {
+		t.Fatalf("retry event message id = %q, want %q", retry.event.MessageID, event.MessageID)
+	}
+	if ack.acked != 1 {
+		t.Fatalf("acked deliveries = %d, want 1", ack.acked)
+	}
+	if ack.nacked != 0 {
+		t.Fatalf("nacked deliveries = %d, want 0", ack.nacked)
+	}
+	recorded, err := inbox.Record(context.Background(), "inventory-worker", event)
+	if err != nil {
+		t.Fatalf("record inbox after retry release: %v", err)
+	}
+	if !recorded {
+		t.Fatal("inbox entry must be released before scheduling retry")
+	}
+}
+
+func TestConsumerNacksAfterRetryAttemptsExhausted(t *testing.T) {
+	ack := &fakeAcknowledger{}
+	retry := &fakeRetryPublisher{}
+	delivery := deliveryForTest(t, ack, commerce.OutboxEvent{
+		MessageID:     "msg_1",
+		CorrelationID: "cor_1",
+		EventType:     "order.created",
+	})
+	delivery.Headers["fulfillhub_retry_attempt"] = int32(2)
+	consumer := Consumer{
+		Queue:        InventoryReserveQueue,
+		ConsumerName: "inventory-worker",
+		Inbox:        NewMemoryInbox(),
+		Retry:        retry,
+		MaxRetries:   2,
+		Handler: HandlerFunc(func(context.Context, commerce.OutboxEvent) error {
+			return errors.New("provider timeout")
+		}),
+	}
+
+	err := consumer.ProcessDelivery(context.Background(), delivery)
+	if err == nil {
+		t.Fatal("ProcessDelivery must return handler error")
+	}
+	if retry.calls != 0 {
+		t.Fatalf("retry publishes = %d, want 0 after attempts exhausted", retry.calls)
+	}
+	if ack.acked != 0 {
+		t.Fatalf("acked deliveries = %d, want 0", ack.acked)
+	}
+	if ack.nacked != 1 {
+		t.Fatalf("nacked deliveries = %d, want 1", ack.nacked)
+	}
+}
+
+func TestConsumerDoesNotRetryWhenInboxReleaseFails(t *testing.T) {
+	ack := &fakeAcknowledger{}
+	retry := &fakeRetryPublisher{}
+	consumer := Consumer{
+		Queue:        InventoryReserveQueue,
+		ConsumerName: "inventory-worker",
+		Inbox:        failingReleaseInbox{MemoryInbox: NewMemoryInbox()},
+		Retry:        retry,
+		Handler: HandlerFunc(func(context.Context, commerce.OutboxEvent) error {
+			return errors.New("provider timeout")
+		}),
+	}
+
+	err := consumer.ProcessDelivery(context.Background(), deliveryForTest(t, ack, commerce.OutboxEvent{
+		MessageID:     "msg_1",
+		CorrelationID: "cor_1",
+		EventType:     "order.created",
+	}))
+	if err == nil {
+		t.Fatal("ProcessDelivery must return handler error")
+	}
+	if retry.calls != 0 {
+		t.Fatalf("retry publishes = %d, want 0 when inbox release fails", retry.calls)
+	}
+	if ack.acked != 0 {
+		t.Fatalf("acked deliveries = %d, want 0", ack.acked)
+	}
+	if ack.nacked != 1 {
+		t.Fatalf("nacked deliveries = %d, want 1", ack.nacked)
+	}
+}
+
 func TestConsumerReleasesInboxAfterHandlerFailure(t *testing.T) {
 	inbox := NewMemoryInbox()
 	event := commerce.OutboxEvent{
@@ -227,6 +341,29 @@ type fakeAcknowledger struct {
 	nacked   int
 	rejected int
 	requeued bool
+}
+
+type fakeRetryPublisher struct {
+	calls    int
+	attempt  int
+	event    commerce.OutboxEvent
+	delivery amqp.Delivery
+}
+
+func (p *fakeRetryPublisher) PublishRetry(_ context.Context, delivery amqp.Delivery, event commerce.OutboxEvent, attempt int) error {
+	p.calls++
+	p.delivery = delivery
+	p.event = event
+	p.attempt = attempt
+	return nil
+}
+
+type failingReleaseInbox struct {
+	*MemoryInbox
+}
+
+func (i failingReleaseInbox) Release(context.Context, string, commerce.OutboxEvent) error {
+	return errors.New("release failed")
 }
 
 func (a *fakeAcknowledger) Ack(uint64, bool) error {

@@ -37,8 +37,10 @@
 
 - Every message must include `message_id`, `correlation_id`, `causation_id`, and `occurred_at`
 - Consumers must write `inbox_messages` before acknowledging broker delivery
-- Transient failures move messages to retry queues with exponential backoff semantics
-- Exhausted retries route to `fulfillhub.dlx`
+- Transient handler failures are acknowledged only after a copy is published to
+  `fulfillhub.retry`, where queue TTL delays redelivery back to
+  `fulfillhub.domain`
+- Exhausted retries are nacked from the main queue and route to `fulfillhub.dlx`
 - Replay from DLQ must be an explicit operator action recorded in `audit_logs`
 
 ## Implementation status
@@ -51,7 +53,10 @@
   `dlq.replay` details for successful or failed replay attempts.
 - Inbox idempotency is implemented for memory tests and PostgreSQL-backed consumers.
 - RabbitMQ consumers extract `traceparent`, create consume spans, record inbox
-  entries before handlers run, ack duplicates, and nack handler failures.
+  entries before handlers run, ack duplicates, publish bounded retries for
+  handler failures, and nack exhausted failures to DLQs.
+- RabbitMQ topology declaration creates each primary queue, retry queue, and
+  dead-letter queue listed in the queue design table.
 - `cmd/fulfillhub-worker` consumes inventory, payment, shipment, and order
   finalization queues for the current happy-path saga.
 - Inventory, payment, and shipment workers persist their projections and write
