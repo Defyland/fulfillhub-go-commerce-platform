@@ -96,4 +96,25 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if got := len(store.OutboxEvents()); got == 0 {
 		t.Fatal("expected at least one outbox event")
 	}
+	pending, err := store.PendingOutboxEvents(ctx, 10)
+	if err != nil {
+		t.Fatalf("pending outbox events: %v", err)
+	}
+	if len(pending) == 0 {
+		t.Fatal("expected pending outbox event")
+	}
+	if err := store.MarkOutboxPublished(ctx, event.MessageID, now); err != nil {
+		t.Fatalf("mark outbox published: %v", err)
+	}
+	firstInbox, err := store.RecordInboxMessage(ctx, "inventory.reserve", event)
+	if err != nil {
+		t.Fatalf("record inbox message: %v", err)
+	}
+	secondInbox, err := store.RecordInboxMessage(ctx, "inventory.reserve", event)
+	if err != nil {
+		t.Fatalf("record duplicate inbox message: %v", err)
+	}
+	if !firstInbox || secondInbox {
+		t.Fatalf("inbox dedupe = (%v, %v), want (true, false)", firstInbox, secondInbox)
+	}
 }

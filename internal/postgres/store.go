@@ -169,6 +169,71 @@ func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 	return events
 }
 
+func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) ([]commerce.OutboxEvent, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT message_id, correlation_id, event_type, order_id, merchant_id, occurred_at
+		FROM outbox_events
+		WHERE published_at IS NULL
+		ORDER BY occurred_at ASC
+		LIMIT $1
+	`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query pending outbox events: %w", err)
+	}
+	defer rows.Close()
+
+	var events []commerce.OutboxEvent
+	for rows.Next() {
+		var event commerce.OutboxEvent
+		if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.EventType, &event.OrderID, &event.MerchantID, &event.OccurredAt); err != nil {
+			return nil, fmt.Errorf("scan pending outbox event: %w", err)
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending outbox events: %w", err)
+	}
+	return events, nil
+}
+
+func (s *Store) MarkOutboxPublished(ctx context.Context, messageID string, publishedAt time.Time) error {
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE outbox_events
+		SET published_at = $2
+		WHERE message_id = $1 AND published_at IS NULL
+	`, messageID, publishedAt)
+	if err != nil {
+		return fmt.Errorf("mark outbox event published: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("inspect outbox mark rows: %w", err)
+	}
+	if rows == 0 {
+		return commerce.ErrNotFound
+	}
+	return nil
+}
+
+func (s *Store) RecordInboxMessage(ctx context.Context, consumerName string, event commerce.OutboxEvent) (bool, error) {
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO inbox_messages (consumer_name, message_id, correlation_id)
+		VALUES ($1, $2, $3)
+		ON CONFLICT DO NOTHING
+	`, consumerName, event.MessageID, event.CorrelationID)
+	if err != nil {
+		return false, fmt.Errorf("record inbox message: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("inspect inbox rows: %w", err)
+	}
+	return rows == 1, nil
+}
+
 type queryer interface {
 	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row

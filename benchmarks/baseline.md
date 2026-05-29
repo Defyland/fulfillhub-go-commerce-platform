@@ -17,7 +17,7 @@ This document defines the benchmark matrix and acceptance targets for FulfillHub
 
 | Benchmark | Result | Scope |
 | --- | --- | --- |
-| `BenchmarkCreateOrder-10` | 18243 ns/op | In-process Go HTTP handler via `httptest` |
+| `BenchmarkCreateOrder-10` | 15784 ns/op | In-process Go HTTP handler via `httptest` |
 
 ## Measured metrics
 

@@ -2,7 +2,10 @@ module github.com/Defyland/fulfillhub-go-commerce-platform
 
 go 1.23.3
 
-require github.com/jackc/pgx/v5 v5.7.1
+require (
+	github.com/jackc/pgx/v5 v5.7.1
+	github.com/rabbitmq/amqp091-go v1.10.0
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

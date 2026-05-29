@@ -1,6 +1,6 @@
 # Architecture Overview
 
-FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store for fast tests and switches to PostgreSQL-backed order/outbox persistence when `DATABASE_URL` is configured.
+FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store for fast tests, switches to PostgreSQL-backed order/outbox persistence when `DATABASE_URL` is configured, and includes a RabbitMQ outbox relay process.
 
 ## System context
 
@@ -35,16 +35,18 @@ Current status:
 - Orders and HTTP API are implemented.
 - In-memory order storage and outbox event recording are implemented.
 - PostgreSQL persistence is implemented.
-- RabbitMQ relay, inventory, payment, shipment, and notification workers are planned.
+- RabbitMQ relay code is implemented.
+- Inventory, payment, shipment, and notification workers are planned.
 
 ## Request lifecycle
 
 1. Merchant submits `POST /api/v1/orders` with API key and idempotency key.
 2. Orders module validates tenant access and request shape.
 3. Orders service stores the order, items, initial saga state, and outbox message.
-4. The current slice keeps the outbox event in memory for testability.
+4. The in-memory store keeps outbox events in memory for fast testability.
 5. With `DATABASE_URL`, order state and outbox rows are committed in PostgreSQL.
-6. The next messaging phase will relay `order.created` to RabbitMQ and project downstream outcomes.
+6. `cmd/fulfillhub-outbox-relay` publishes pending outbox rows to RabbitMQ.
+7. Future workers will consume those events and project downstream outcomes.
 
 ## Observability model
 
@@ -55,7 +57,7 @@ Current status:
 
 ## Deployment direction
 
-Phase 1 should run locally via Docker Compose with:
+The full local stack should run via Docker Compose with:
 
 - one Go API container
 - PostgreSQL

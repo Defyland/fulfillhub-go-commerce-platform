@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 2 persistence slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, request tests, authorization tests, database tests, a native benchmark, Docker build validation, and documentation baseline. RabbitMQ, Redis, and k6 load tests remain planned next steps.
+> Status: Phase 2 persistence and messaging slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher topology, inbox idempotency, request tests, authorization tests, database tests, messaging tests, a native benchmark, Docker build validation, and documentation baseline. Redis and k6 load tests remain planned next steps.
 
 ## What is this product?
 
@@ -41,12 +41,12 @@ FulfillHub solves that by centralizing orchestration and explicitly designing fo
 
 ## Architecture overview
 
-The current implementation starts as a Go modular monolith with strongly isolated packages and asynchronous boundaries represented through an in-memory outbox. The goal is to earn reliability and simplicity first, then add PostgreSQL, RabbitMQ, and Redis behind the same contracts.
+The current implementation starts as a Go modular monolith with strongly isolated packages and asynchronous boundaries represented through a transactional outbox. The goal is to earn reliability and simplicity first, then add Redis controls, k6 baselines, dashboards, and provider adapters behind the same contracts.
 
 - HTTP API entrypoint for merchant and operations access
 - Domain modules for orders, inventory, payments, shipments, notifications, and reporting
 - In-memory store for fast local tests and PostgreSQL for transactional state, outbox, inbox, and audit logs when `DATABASE_URL` is configured
-- In-memory outbox events for the first executable slice, with RabbitMQ planned for domain fan-out and asynchronous side effects
+- Transactional outbox events with a RabbitMQ relay for domain fan-out and asynchronous side effects
 - Redis planned for idempotency windows and rate-limiting primitives
 - OpenTelemetry, Prometheus, and Grafana for observability
 
@@ -100,14 +100,14 @@ The API surface is versioned under `/api/v1` and covers:
 
 ## Async or event architecture
 
-FulfillHub treats asynchronous flow as a first-class concern. The current executable slice records outbox events in memory so the order workflow can be tested before RabbitMQ is introduced.
+FulfillHub treats asynchronous flow as a first-class concern. The current implementation records outbox events and ships a relay process that publishes pending events to RabbitMQ.
 
 - Order acceptance emits `order.created`
 - Inventory module consumes reserve requests and emits either `inventory.reserved` or `inventory.rejected`
 - Payment module emits `payment.authorized` or `payment.failed`
 - Shipment module emits `shipment.created` or `shipment.failed`
 - Order orchestrator finalizes the saga with `order.completed` or `order.cancelled`
-- Future consumers will use inbox deduplication, retry queues, and DLQ routing
+- Consumer idempotency is modeled through inbox deduplication, with retry queues and DLQ routing declared in the RabbitMQ topology
 
 The message catalog and routing design are documented in [docs/events/catalog.md](./docs/events/catalog.md) and [docs/diagrams/order-saga-sequence.md](./docs/diagrams/order-saga-sequence.md).
 
@@ -115,7 +115,7 @@ The message catalog and routing design are documented in [docs/events/catalog.md
 
 The relational model centers on transactional consistency around orders and stock.
 
-- The current executable slice stores orders and outbox events in memory
+- The current executable slice supports in-memory storage for fast tests and PostgreSQL storage for durable runtime state
 - Order creation derives `merchant_id` from `X-API-Key`, not from request bodies
 - Idempotency keys protect duplicate order creation requests
 - Duplicate external order IDs are rejected per merchant
@@ -132,8 +132,10 @@ The current implementation includes Go tests for:
 - authentication and tenant authorization
 - validation and conflict error contracts
 - operations token access
+- outbox relay success and publish-failure behavior
+- inbox idempotency by consumer and message ID
 
-The remaining planned test layers are PostgreSQL integration tests, RabbitMQ messaging tests, and k6 load tests once those runtime dependencies are added.
+The remaining planned test layers are live RabbitMQ integration tests and k6 load tests once those runtime dependencies are available locally or in CI.
 
 ## Performance benchmarks
 
@@ -177,8 +179,8 @@ The explicit auth strategy is captured in [docs/adr/0003-authentication-and-auth
 - Start with a modular monolith instead of early microservices to keep consistency work tractable
 - Prefer RabbitMQ over Kafka because command-style routing, retries, and queue ownership are central here
 - Use orchestration-style sagas because the order lifecycle needs explicit operational visibility
-- Keep OpenAPI contract-first to stabilize integrations before handlers exist
-- Defer carrier and payment provider implementation details until the first vertical slice
+- Keep OpenAPI contract-first to stabilize integrations as handlers evolve
+- Defer carrier and payment provider implementation details until the fulfillment worker slice
 
 The most important architecture decisions are recorded in:
 
@@ -203,6 +205,14 @@ To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API a
 ```sh
 DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
   go run ./cmd/fulfillhub-api
+```
+
+Run the outbox relay when PostgreSQL and RabbitMQ are available:
+
+```sh
+DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
+RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
+  go run ./cmd/fulfillhub-outbox-relay
 ```
 
 Run the full repository validation:

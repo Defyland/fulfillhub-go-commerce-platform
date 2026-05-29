@@ -1,6 +1,7 @@
 package commerce
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ type MemoryStore struct {
 	ordersByExternal    map[string]string
 	ordersByIdempotency map[string]string
 	outbox              []OutboxEvent
+	publishedOutbox     map[string]time.Time
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -26,6 +28,7 @@ func NewMemoryStore() *MemoryStore {
 		orders:              make(map[string]*Order),
 		ordersByExternal:    make(map[string]string),
 		ordersByIdempotency: make(map[string]string),
+		publishedOutbox:     make(map[string]time.Time),
 	}
 }
 
@@ -84,6 +87,34 @@ func (s *MemoryStore) OutboxEvents() []OutboxEvent {
 	events := make([]OutboxEvent, len(s.outbox))
 	copy(events, s.outbox)
 	return events
+}
+
+func (s *MemoryStore) PendingOutboxEvents(_ context.Context, limit int) ([]OutboxEvent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if limit <= 0 {
+		limit = len(s.outbox)
+	}
+	events := make([]OutboxEvent, 0, min(limit, len(s.outbox)))
+	for _, event := range s.outbox {
+		if _, ok := s.publishedOutbox[event.MessageID]; ok {
+			continue
+		}
+		events = append(events, event)
+		if len(events) == limit {
+			break
+		}
+	}
+	return events, nil
+}
+
+func (s *MemoryStore) MarkOutboxPublished(_ context.Context, messageID string, publishedAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.publishedOutbox[messageID] = publishedAt
+	return nil
 }
 
 func scopedKey(merchantID, value string) string {

@@ -40,6 +40,13 @@
 - Exhausted retries route to `fulfillhub.dlx`
 - Replay from DLQ must be an explicit operator action recorded in `audit_logs`
 
+## Implementation status
+
+- The API writes outbox events for order creation and cancellation.
+- The PostgreSQL store can load pending outbox events and mark them published.
+- `cmd/fulfillhub-outbox-relay` publishes pending events to RabbitMQ.
+- Inbox idempotency is implemented for memory tests and PostgreSQL-backed consumers.
+
 ## Example event payload
 
 ```json
