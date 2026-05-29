@@ -567,6 +567,9 @@ func (s *Store) RecordCompensation(ctx context.Context, source commerce.OutboxEv
 	if rows == 0 {
 		return commerce.ErrNotFound
 	}
+	if err := applyCompensationEffects(ctx, tx, source, audit.CreatedAt); err != nil {
+		return err
+	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO compensation_events (
 			order_id, merchant_id, source_message_id, source_event_type,
@@ -585,6 +588,49 @@ func (s *Store) RecordCompensation(ctx context.Context, source commerce.OutboxEv
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit record compensation: %w", err)
+	}
+	return nil
+}
+
+func applyCompensationEffects(ctx context.Context, tx *sql.Tx, source commerce.OutboxEvent, at time.Time) error {
+	switch source.EventType {
+	case "payment.failed", "shipment.failed":
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE stock_reservations
+			SET status = 'released',
+				released_at = $2
+			WHERE order_id = $1
+				AND status <> 'released'
+		`, source.OrderID, at); err != nil {
+			return fmt.Errorf("release compensated stock reservations: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE order_items
+			SET reservation_status = 'released'
+			WHERE order_id = $1
+				AND reservation_status = 'reserved'
+		`, source.OrderID); err != nil {
+			return fmt.Errorf("release compensated order items: %w", err)
+		}
+	}
+	if source.EventType == "shipment.failed" {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE payment_authorizations
+			SET status = 'voided',
+				voided_at = $2
+			WHERE order_id = $1
+				AND status = 'authorized'
+		`, source.OrderID, at); err != nil {
+			return fmt.Errorf("void compensated payment authorization: %w", err)
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE orders
+			SET payment_status = 'voided'
+			WHERE order_id = $1
+				AND payment_status = 'authorized'
+		`, source.OrderID); err != nil {
+			return fmt.Errorf("void compensated order payment: %w", err)
+		}
 	}
 	return nil
 }

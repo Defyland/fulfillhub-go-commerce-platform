@@ -416,6 +416,66 @@ func TestCompensationHandlerRecordsTargetStatus(t *testing.T) {
 	}
 }
 
+func TestCompensationHandlerReleasesStockAndVoidsPayment(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	ids := []string{"msg_inventory", "msg_payment", "pay_authorized"}
+	now := time.Date(2026, 5, 29, 14, 30, 0, 0, time.UTC)
+	deps := Dependencies{
+		Projector: store,
+		Orders:    store,
+		Clock:     func() time.Time { return now },
+		NewID: func(string) string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	}
+	if err := handlerForTest(t, messaging.InventoryReserveQueue, deps).HandleEvent(context.Background(), service.OutboxEvents()[0]); err != nil {
+		t.Fatalf("inventory handler returned error: %v", err)
+	}
+	if err := handlerForTest(t, messaging.PaymentsAuthorizeQueue, deps).HandleEvent(context.Background(), lastOutboxEvent(service)); err != nil {
+		t.Fatalf("payment handler returned error: %v", err)
+	}
+	compensation := handlerForTest(t, messaging.OrdersCompensateQueue, Dependencies{
+		Projector: store,
+		Clock:     func() time.Time { return now.Add(time.Minute) },
+	})
+
+	if err := compensation.HandleEvent(context.Background(), commerce.OutboxEvent{
+		MessageID:     "msg_shipment_failed",
+		CorrelationID: "cor_1",
+		CausationID:   lastOutboxEvent(service).MessageID,
+		EventType:     "shipment.failed",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+	}); err != nil {
+		t.Fatalf("compensation handler returned error: %v", err)
+	}
+
+	compensated, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if compensated.Status != commerce.StatusCancellationPending {
+		t.Fatalf("order status = %q, want cancellation_pending", compensated.Status)
+	}
+	if compensated.Items[0].ReservationStatus != "released" {
+		t.Fatalf("reservation status = %q, want released", compensated.Items[0].ReservationStatus)
+	}
+	if compensated.Payment == nil || compensated.Payment.Status != "voided" {
+		t.Fatalf("payment projection = %+v, want voided payment", compensated.Payment)
+	}
+	last := service.AuditLogs()[len(service.AuditLogs())-1]
+	if last.Details["stock_release"] != "requested" || last.Details["payment_void"] != "requested" {
+		t.Fatalf("compensation audit details = %+v, want stock release and payment void", last.Details)
+	}
+}
+
 func handlerForTest(t testing.TB, queue string, deps Dependencies) messaging.EventHandler {
 	t.Helper()
 	handler, err := HandlerForQueue(queue, deps)

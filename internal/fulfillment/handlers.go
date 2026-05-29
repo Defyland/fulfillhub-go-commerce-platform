@@ -116,6 +116,13 @@ func recordCompensation(ctx context.Context, deps Dependencies, event commerce.O
 	now := deps.Clock()
 	audit := systemAudit(event, action, now)
 	audit.Details["target_order_status"] = string(status)
+	switch event.EventType {
+	case "payment.failed":
+		audit.Details["stock_release"] = "requested"
+	case "shipment.failed":
+		audit.Details["stock_release"] = "requested"
+		audit.Details["payment_void"] = "requested"
+	}
 	return deps.Projector.RecordCompensation(ctx, event, status, audit)
 }
 

@@ -139,8 +139,10 @@ The current worker records customer email queueing in one transaction:
 The current worker records compensation projection state in one transaction:
 
 1. update `orders.status` to the target compensation status
-2. insert or update `compensation_events`
-3. insert `audit_logs` row for the compensation action
+2. release reserved stock rows for `payment.failed` and `shipment.failed`
+3. void authorized payment rows for `shipment.failed`
+4. insert or update `compensation_events`
+5. insert `audit_logs` row for the compensation action
 
 ## Isolation assumptions
 

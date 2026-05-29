@@ -116,7 +116,7 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
 - Order cancellation worker consumes `order.cancel_requested`, durably marks
   the order `cancelled`, and writes `order.cancelled` to the outbox
 - Notification worker consumes order completion, cancellation, or fulfillment failure events and records a durable email notification projection
-- Compensation worker consumes inventory, payment, or shipment failure events and records durable compensation outcomes
+- Compensation worker consumes inventory, payment, or shipment failure events and records durable compensation outcomes, stock releases, and payment void projections
 - Consumer idempotency is modeled through inbox deduplication, bounded retry
   queues, and DLQ routing in the RabbitMQ topology
 
@@ -223,7 +223,7 @@ The current threat model and endpoint authorization matrix live in:
 - Prefer RabbitMQ over Kafka because command-style routing, retries, and queue ownership are central here
 - Use orchestration-style sagas because the order lifecycle needs explicit operational visibility
 - Keep OpenAPI contract-first to stabilize integrations as handlers evolve
-- Keep the first worker slice provider-light; durable carrier, payment, and inventory projections come after the event flow is proven
+- Keep provider adapters lightweight while persisting durable inventory, payment, shipment, and compensation projections
 
 The most important architecture decisions are recorded in:
 

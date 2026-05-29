@@ -352,6 +352,131 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if compensated.Status != commerce.StatusFailed {
 		t.Fatalf("compensated status = %q, want failed", compensated.Status)
 	}
+	voidOrder := &commerce.Order{
+		OrderID:         "ord_pg_void_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		MerchantID:      "mer_pg_test",
+		ExternalOrderID: "external_pg_void_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		Status:          commerce.StatusPendingFulfillment,
+		Currency:        "USD",
+		Totals: commerce.OrderTotals{
+			Subtotal: commerce.Money{Amount: 12900, Currency: "USD"},
+			Shipping: commerce.Money{Amount: 900, Currency: "USD"},
+			Total:    commerce.Money{Amount: 13800, Currency: "USD"},
+		},
+		Items: []commerce.OrderItem{{
+			SKU:               "SKU-LAMP-WHT",
+			Quantity:          1,
+			UnitPrice:         commerce.Money{Amount: 12900, Currency: "USD"},
+			ReservationStatus: "pending",
+		}},
+		Payment:   &commerce.Payment{Provider: "stripe", Status: "pending_authorization"},
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	voidCreated := commerce.OutboxEvent{
+		MessageID:     "msg_pg_void_created_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: "cor_pg_void",
+		CausationID:   "msg_pg_void_created_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		EventType:     "order.created",
+		OrderID:       voidOrder.OrderID,
+		MerchantID:    voidOrder.MerchantID,
+		OccurredAt:    now.Add(8 * time.Second),
+	}
+	if _, _, err := store.InsertOrder(ctx, voidOrder.MerchantID, "idem_pg_void_"+strings.ReplaceAll(t.Name(), "/", "_"), voidOrder, voidCreated, commerce.AuditLog{
+		MerchantID:    voidOrder.MerchantID,
+		OrderID:       voidOrder.OrderID,
+		ActorType:     "merchant",
+		ActorID:       voidOrder.MerchantID,
+		Action:        "order.create",
+		CorrelationID: voidCreated.CorrelationID,
+		CreatedAt:     voidCreated.OccurredAt,
+	}); err != nil {
+		t.Fatalf("insert void order: %v", err)
+	}
+	voidInventory := commerce.OutboxEvent{
+		MessageID:     "msg_pg_void_inventory_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: voidCreated.CorrelationID,
+		CausationID:   voidCreated.MessageID,
+		EventType:     "inventory.reserved",
+		OrderID:       voidOrder.OrderID,
+		MerchantID:    voidOrder.MerchantID,
+		OccurredAt:    now.Add(9 * time.Second),
+	}
+	if err := store.RecordInventoryReserved(ctx, voidCreated, voidInventory, commerce.AuditLog{
+		MerchantID:    voidOrder.MerchantID,
+		OrderID:       voidOrder.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "inventory.reserved",
+		CorrelationID: voidCreated.CorrelationID,
+		CreatedAt:     voidInventory.OccurredAt,
+	}); err != nil {
+		t.Fatalf("record void inventory reserved: %v", err)
+	}
+	voidPayment := commerce.OutboxEvent{
+		MessageID:     "msg_pg_void_payment_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: voidCreated.CorrelationID,
+		CausationID:   voidInventory.MessageID,
+		EventType:     "payment.authorized",
+		OrderID:       voidOrder.OrderID,
+		MerchantID:    voidOrder.MerchantID,
+		OccurredAt:    now.Add(10 * time.Second),
+	}
+	if err := store.RecordPaymentAuthorized(ctx, voidInventory, voidPayment, commerce.Payment{
+		Provider:        "stripe",
+		Status:          "authorized",
+		AuthorizationID: "pay_pg_void_" + strings.ReplaceAll(t.Name(), "/", "_"),
+	}, commerce.AuditLog{
+		MerchantID:    voidOrder.MerchantID,
+		OrderID:       voidOrder.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "payment.authorized",
+		CorrelationID: voidCreated.CorrelationID,
+		CreatedAt:     voidPayment.OccurredAt,
+	}); err != nil {
+		t.Fatalf("record void payment authorized: %v", err)
+	}
+	voidCompensation := commerce.OutboxEvent{
+		MessageID:     "msg_pg_void_compensation_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: voidCreated.CorrelationID,
+		CausationID:   voidPayment.MessageID,
+		EventType:     "shipment.failed",
+		OrderID:       voidOrder.OrderID,
+		MerchantID:    voidOrder.MerchantID,
+		OccurredAt:    now.Add(11 * time.Second),
+	}
+	if err := store.RecordCompensation(ctx, voidCompensation, commerce.StatusCancellationPending, commerce.AuditLog{
+		MerchantID:    voidOrder.MerchantID,
+		OrderID:       voidOrder.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "compensation.shipment_failed",
+		CorrelationID: voidCreated.CorrelationID,
+		CreatedAt:     voidCompensation.OccurredAt,
+		Details: map[string]string{
+			"source_message_id":   voidCompensation.MessageID,
+			"source_event_type":   voidCompensation.EventType,
+			"target_order_status": string(commerce.StatusCancellationPending),
+			"stock_release":       "requested",
+			"payment_void":        "requested",
+		},
+	}); err != nil {
+		t.Fatalf("record void compensation: %v", err)
+	}
+	voided, err := store.GetOrder(ctx, voidOrder.OrderID)
+	if err != nil {
+		t.Fatalf("get voided order: %v", err)
+	}
+	if voided.Status != commerce.StatusCancellationPending {
+		t.Fatalf("voided order status = %q, want cancellation_pending", voided.Status)
+	}
+	if voided.Items[0].ReservationStatus != "released" {
+		t.Fatalf("voided reservation status = %q, want released", voided.Items[0].ReservationStatus)
+	}
+	if voided.Payment == nil || voided.Payment.Status != "voided" {
+		t.Fatalf("voided payment = %+v, want voided", voided.Payment)
+	}
 	auditLogs := store.AuditLogs()
 	if len(auditLogs) == 0 {
 		t.Fatal("expected at least one audit log")

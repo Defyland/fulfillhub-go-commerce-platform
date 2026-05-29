@@ -227,6 +227,17 @@ func (s *MemoryStore) RecordCompensation(_ context.Context, source OutboxEvent, 
 	}
 	order.Status = status
 	order.UpdatedAt = audit.CreatedAt
+	switch source.EventType {
+	case "payment.failed", "shipment.failed":
+		for idx := range order.Items {
+			if order.Items[idx].ReservationStatus == "reserved" {
+				order.Items[idx].ReservationStatus = "released"
+			}
+		}
+	}
+	if source.EventType == "shipment.failed" && order.Payment != nil && order.Payment.Status == "authorized" {
+		order.Payment.Status = "voided"
+	}
 	s.auditLogs = append(s.auditLogs, audit)
 	return nil
 }
