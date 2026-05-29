@@ -53,6 +53,17 @@ func TestMigrationsAddFulfillmentProjectionTables(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddNotificationEvents(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/004_notification_events.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	sql := string(body)
+	if !strings.Contains(sql, "CREATE TABLE IF NOT EXISTS notification_events") {
+		t.Fatal("notification events migration does not create notification_events")
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -223,6 +234,36 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if fetched.Shipment == nil || fetched.Shipment.Status != "created" {
 		t.Fatalf("shipment projection = %+v, want created", fetched.Shipment)
 	}
+	completedEvent := commerce.OutboxEvent{
+		MessageID:     "msg_pg_completed_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: event.CorrelationID,
+		EventType:     "order.completed",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+		OccurredAt:    now.Add(5 * time.Second),
+	}
+	if _, err := store.UpdateOrderStatus(ctx, order.OrderID, commerce.StatusCompleted, completedEvent.OccurredAt, completedEvent, commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "order.completed",
+		CorrelationID: event.CorrelationID,
+		CreatedAt:     completedEvent.OccurredAt,
+	}); err != nil {
+		t.Fatalf("complete order: %v", err)
+	}
+	if err := store.RecordNotificationQueued(ctx, completedEvent, commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "notification.email_queued",
+		CorrelationID: event.CorrelationID,
+		CreatedAt:     now.Add(6 * time.Second),
+	}); err != nil {
+		t.Fatalf("record notification queued: %v", err)
+	}
 	auditLogs := store.AuditLogs()
 	if len(auditLogs) == 0 {
 		t.Fatal("expected at least one audit log")
@@ -294,6 +335,8 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		"postgres.record_inventory_reserved",
 		"postgres.record_payment_authorized",
 		"postgres.record_shipment_created",
+		"postgres.update_order_status",
+		"postgres.record_notification_queued",
 	} {
 		if !hasSpan(recorder.Ended(), name) {
 			t.Fatalf("expected span %q in postgres integration", name)

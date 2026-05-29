@@ -14,6 +14,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 | `stock_reservations` | Reservation records used by inventory saga steps | Unique `(order_id, sku)` |
 | `payment_authorizations` | Provider attempts and results | Unique successful authorization per `order_id` |
 | `shipments` | Carrier handoff and tracking state | Unique `tracking_number` when present |
+| `notification_events` | Customer communication projection | Unique source message ID |
 | `outbox_events` | Pending messages for broker publication | Indexed by `published_at` and `created_at` |
 | `inbox_messages` | Per-consumer message deduplication | Unique `(consumer_name, message_id)` |
 | `audit_logs` | Operator and automated action trail with JSON details | Indexed by `merchant_id`, `order_id`, and `created_at` |
@@ -27,6 +28,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 - `outbox_events(published_at, created_at)` for relay polling
 - `inbox_messages(consumer_name, processed_at desc)` for replay diagnostics
 - `shipments(order_id)` for order read models
+- `notification_events(order_id, created_at desc)` for customer timeline diagnostics
 
 ## Transaction boundaries
 
@@ -88,6 +90,13 @@ The current worker records the carrier handoff projection in one transaction:
 2. touch the order version and update timestamp
 3. insert `outbox_events` row for `shipment.created`
 4. insert `audit_logs` row for `shipment.created`
+
+### Notification queueing
+
+The current worker records customer email queueing in one transaction:
+
+1. insert or update `notification_events`
+2. insert `audit_logs` row for `notification.email_queued`
 
 ### Compensation
 

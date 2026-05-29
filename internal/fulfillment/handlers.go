@@ -18,6 +18,7 @@ type Projector interface {
 	RecordInventoryReserved(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordPaymentAuthorized(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, payment commerce.Payment, audit commerce.AuditLog) error
 	RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) error
+	RecordNotificationQueued(ctx context.Context, source commerce.OutboxEvent, audit commerce.AuditLog) error
 }
 
 type Dependencies struct {
@@ -47,13 +48,31 @@ func HandlerForQueue(queue string, deps Dependencies) (messaging.EventHandler, e
 		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
 			return completeOrder(ctx, deps, event)
 		}), nil
-	case messaging.OrdersCompensateQueue, messaging.NotificationsEmailQueue:
+	case messaging.NotificationsEmailQueue:
+		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
+			return queueNotification(ctx, deps, event)
+		}), nil
+	case messaging.OrdersCompensateQueue:
 		return messaging.HandlerFunc(func(context.Context, commerce.OutboxEvent) error {
 			return nil
 		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported worker queue %q", queue)
 	}
+}
+
+func queueNotification(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
+	if deps.Projector == nil {
+		return fmt.Errorf("fulfillment projector is required")
+	}
+	if event.EventType != "order.completed" && event.EventType != "order.cancelled" {
+		return fmt.Errorf("expected order.completed or order.cancelled event, got %s", event.EventType)
+	}
+	if err := validateEventIdentity(event); err != nil {
+		return err
+	}
+	now := deps.Clock()
+	return deps.Projector.RecordNotificationQueued(ctx, event, systemAudit(event, "notification.email_queued", now))
 }
 
 func reserveInventory(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
@@ -129,6 +148,10 @@ func validateEvent(event commerce.OutboxEvent, expectedType string) error {
 	if event.EventType != expectedType {
 		return fmt.Errorf("expected %s event, got %s", expectedType, event.EventType)
 	}
+	return validateEventIdentity(event)
+}
+
+func validateEventIdentity(event commerce.OutboxEvent) error {
 	if event.MessageID == "" {
 		return fmt.Errorf("message id is required")
 	}

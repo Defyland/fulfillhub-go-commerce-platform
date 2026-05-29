@@ -32,6 +32,8 @@
   audit logs are written with actor and correlation metadata.
 - Worker-driven inventory, payment, and shipment projections write audit logs
   before their follow-up outbox events are published.
+- Worker-driven email notification queueing writes audit logs for customer
+  communication diagnostics.
 - DLQ replay requires `DATABASE_URL` and `OPS_ACTOR_ID`, then records durable
   `dlq.replay` audit details for success and failure attempts.
 - Operations JWTs are validated with HS256, expiry, subject, `operations` or

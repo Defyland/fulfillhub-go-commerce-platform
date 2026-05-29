@@ -11,6 +11,7 @@ sequenceDiagram
   participant Payment
   participant Shipment
   participant Orders as Orders Finalizer
+  participant Notify as Notification Worker
 
   Merchant->>API: POST /api/v1/orders
   API->>DB: insert order + items + outbox event
@@ -29,11 +30,13 @@ sequenceDiagram
   MQ->>Orders: consume shipment.created
   Orders->>DB: update order completed + outbox event
   Relay->>MQ: publish order.completed
+  MQ->>Notify: consume order.completed
+  Notify->>DB: persist notification_events + audit log
 ```
 
 The current worker executable implements the happy path above with durable
-inventory, payment, and shipment projections. Compensation and notification
-projections are planned as the next worker slices.
+inventory, payment, shipment, and notification projections. Compensation
+projections are planned as the next worker slice.
 
 Compensation rules:
 

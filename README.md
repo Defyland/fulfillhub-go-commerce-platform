@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed resource profiling remains the main pending performance artifact.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment/notification projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed resource profiling remains the main pending performance artifact.
 
 ## What is this product?
 
@@ -107,6 +107,7 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
 - Payment worker consumes inventory reservations, records `payment_authorizations`, and writes `payment.authorized` to the outbox
 - Shipment worker consumes payment authorizations, records `shipments`, and writes `shipment.created` to the outbox
 - Order finalizer consumes shipment creation, durably marks the order `completed`, and writes `order.completed` to the outbox
+- Notification worker consumes order completion or cancellation and records a durable email notification projection
 - Consumer idempotency is modeled through inbox deduplication, with retry queues and DLQ routing declared in the RabbitMQ topology
 
 The message catalog and routing design are documented in [docs/events/catalog.md](./docs/events/catalog.md) and [docs/diagrams/order-saga-sequence.md](./docs/diagrams/order-saga-sequence.md).

@@ -150,6 +150,17 @@ func (s *MemoryStore) RecordShipmentCreated(_ context.Context, source OutboxEven
 	return nil
 }
 
+func (s *MemoryStore) RecordNotificationQueued(_ context.Context, source OutboxEvent, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.orders[source.OrderID]; !ok {
+		return ErrNotFound
+	}
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
 func (s *MemoryStore) OutboxEvents() []OutboxEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

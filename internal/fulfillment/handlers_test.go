@@ -92,6 +92,40 @@ func TestHandlerForQueueRejectsUnexpectedEventType(t *testing.T) {
 	}
 }
 
+func TestNotificationHandlerQueuesEmailAudit(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	handler := handlerForTest(t, messaging.NotificationsEmailQueue, Dependencies{
+		Projector: store,
+		Clock: func() time.Time {
+			return time.Date(2026, 5, 29, 13, 0, 0, 0, time.UTC)
+		},
+	})
+
+	if err := handler.HandleEvent(context.Background(), commerce.OutboxEvent{
+		MessageID:     "msg_completed",
+		CorrelationID: "cor_1",
+		EventType:     "order.completed",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+	}); err != nil {
+		t.Fatalf("notification handler returned error: %v", err)
+	}
+
+	logs := service.AuditLogs()
+	last := logs[len(logs)-1]
+	if last.Action != "notification.email_queued" {
+		t.Fatalf("last audit action = %q, want notification.email_queued", last.Action)
+	}
+	if last.Details["source_event_type"] != "order.completed" {
+		t.Fatalf("source event detail = %q, want order.completed", last.Details["source_event_type"])
+	}
+}
+
 func handlerForTest(t testing.TB, queue string, deps Dependencies) messaging.EventHandler {
 	t.Helper()
 	handler, err := HandlerForQueue(queue, deps)

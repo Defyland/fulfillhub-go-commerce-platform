@@ -59,6 +59,8 @@
   directly to RabbitMQ.
 - The order finalizer updates the order to `completed` and writes
   `order.completed` through the transactional outbox.
+- The notification worker records durable email queueing projections for
+  `order.completed` and `order.cancelled`.
 - `TestRabbitPublisherIntegration` verifies live RabbitMQ publish and route delivery when `RABBITMQ_URL` is available.
 
 ## Example event payload
