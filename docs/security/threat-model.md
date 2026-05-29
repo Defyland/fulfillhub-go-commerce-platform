@@ -33,6 +33,8 @@
   incident correlation and can be exported to the local OTLP collector.
 - `/metrics` can require a dedicated bearer token when
   `METRICS_BEARER_TOKEN` is configured.
+- Docker Compose sets a local metrics bearer token and Prometheus scrapes with
+  `Authorization: Bearer local-metrics-token`.
 - `order.create`, `order.cancel_requested`, worker-driven `order.completed`,
   and worker-driven `order.cancelled` audit logs are written with actor and
   correlation metadata.
@@ -48,9 +50,3 @@
   `ops` role claims, optional issuer/audience checks, and previous secrets
   during key rotation.
 - CI runs Go tests, race detection, OpenAPI linting, markdown linting, Docker build validation, and gitleaks.
-
-## Known Gaps
-
-- Local profiling leaves `METRICS_BEARER_TOKEN` unset by default for simple
-  smoke/load execution; production deployment must enable it or enforce an
-  equivalent gateway control plus network policy around observability endpoints.

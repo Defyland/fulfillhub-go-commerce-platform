@@ -298,6 +298,10 @@ scrape with `Authorization: Bearer <token>`.
 METRICS_BEARER_TOKEN='local-metrics-token' go run ./cmd/fulfillhub-api
 ```
 
+Docker Compose enables the same metrics bearer control with the local
+`local-metrics-token` token so Prometheus and profiling scripts scrape through
+the authenticated path by default.
+
 Run the outbox relay when PostgreSQL and RabbitMQ are available:
 
 ```sh

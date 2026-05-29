@@ -15,7 +15,9 @@ SCENARIOS=${SCENARIOS:-"smoke load stress spike"}
 KEEP_STACK=${KEEP_STACK:-0}
 DRAIN_TIMEOUT_SECONDS=${DRAIN_TIMEOUT_SECONDS:-60}
 RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-60000}
+METRICS_BEARER_TOKEN=${METRICS_BEARER_TOKEN:-local-metrics-token}
 export RATE_LIMIT_PER_MINUTE
+export METRICS_BEARER_TOKEN
 
 mkdir -p "$RESULT_DIR"
 
@@ -68,11 +70,15 @@ wait_for_api() {
   exit 1
 }
 
+metrics_curl() {
+  curl -fsS -H "Authorization: Bearer ${METRICS_BEARER_TOKEN}" "$BASE_URL/metrics"
+}
+
 wait_for_async_drain() {
 	label=$1
 	deadline=$(($(date +%s) + DRAIN_TIMEOUT_SECONDS))
 	while [ "$(date +%s)" -lt "$deadline" ]; do
-		metrics=$(curl -fsS "$BASE_URL/metrics" 2>/dev/null || true)
+		metrics=$(metrics_curl 2>/dev/null || true)
 		outbox=$(printf '%s\n' "$metrics" | awk '$1 == "fulfillhub_outbox_unpublished_total" { print int($2); found = 1 } END { if (!found) print -1 }')
 		queue_state=$(curl -fsS --max-time 5 -u guest:guest "http://localhost:${RABBITMQ_MANAGEMENT_PORT}/api/queues" 2>/dev/null | python3 -c 'import json, sys; queues = json.load(sys.stdin); print(sum(q.get("messages_ready", 0) for q in queues), sum(q.get("messages_unacknowledged", 0) for q in queues))' 2>/dev/null || true)
 		if [ -z "$queue_state" ]; then
@@ -96,7 +102,7 @@ snapshot() {
   label=$1
   capture "compose-ps-$label.txt" docker compose ps
   capture_shell "docker-stats-$label.txt" 'containers=$(docker compose ps -q); if [ -n "$containers" ]; then docker stats --no-stream $containers; else echo "no compose containers"; fi'
-  capture "api-metrics-$label.prom" curl -fsS "$BASE_URL/metrics"
+  capture "api-metrics-$label.prom" metrics_curl
   capture "rabbitmq-queues-$label.json" curl -fsS -u guest:guest "http://localhost:${RABBITMQ_MANAGEMENT_PORT}/api/queues"
   capture "redis-memory-$label.txt" docker compose exec -T redis redis-cli INFO memory
   capture "postgres-activity-$label.txt" docker compose exec -T postgres psql -U fulfillhub -d fulfillhub -c "SELECT datname, numbackends, xact_commit, xact_rollback, blks_read, blks_hit FROM pg_stat_database WHERE datname = 'fulfillhub';"

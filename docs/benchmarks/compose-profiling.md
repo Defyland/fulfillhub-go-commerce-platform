@@ -35,7 +35,8 @@ with:
 - Docker version and rendered Compose config
 - Docker container CPU and memory snapshots
 - OpenTelemetry Collector service wiring and OTLP exporter environment
-- API `/metrics` snapshots, including RabbitMQ queue gauges
+- API `/metrics` snapshots, including RabbitMQ queue gauges, scraped with the
+  local Compose metrics bearer token
 - RabbitMQ queue state from the management API
 - Redis memory information
 - PostgreSQL activity counters
