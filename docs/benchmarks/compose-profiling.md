@@ -31,3 +31,11 @@ with:
 The harness is versioned and syntax-validated, but measured Compose results
 still require a local Docker daemon. The current workstation cannot connect to
 Docker, so the empirical Compose profile remains pending.
+
+## CI Coverage
+
+`.github/workflows/phase0-quality.yml` runs a Compose smoke profile with the
+`smoke` scenario on GitHub-hosted Linux runners and uploads the captured
+profiling artifacts. Longer load, stress, and spike profiles should still be
+run intentionally and committed under `benchmarks/results/` when the local
+Docker daemon is available.
