@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -56,25 +59,59 @@ func main() {
 	}
 	defer publisher.Close()
 
+	batchSize, err := relayBatchSize(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+	interval, err := relayInterval(os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	relay := messaging.Relay{Source: store, Publisher: publisher}
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
 
 	for {
-		published, err := relay.RunOnce(ctx, 50)
+		published, err := relay.RunOnce(ctx, batchSize)
 		if err != nil {
 			log.Printf("outbox relay error: %v", err)
 		}
 		if published > 0 {
 			log.Printf("published %d outbox events", published)
 		}
+		if published == batchSize {
+			continue
+		}
 
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-time.After(interval):
 		}
 	}
+}
+
+func relayBatchSize(getenv func(string) string) (int, error) {
+	value := strings.TrimSpace(getenv("OUTBOX_RELAY_BATCH_SIZE"))
+	if value == "" {
+		return 100, nil
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("OUTBOX_RELAY_BATCH_SIZE must be a positive integer")
+	}
+	return parsed, nil
+}
+
+func relayInterval(getenv func(string) string) (time.Duration, error) {
+	value := strings.TrimSpace(getenv("OUTBOX_RELAY_INTERVAL"))
+	if value == "" {
+		return 250 * time.Millisecond, nil
+	}
+	parsed, err := time.ParseDuration(value)
+	if err != nil || parsed <= 0 {
+		return 0, fmt.Errorf("OUTBOX_RELAY_INTERVAL must be a positive duration")
+	}
+	return parsed, nil
 }
 
 func newRabbitPublisherWithRetry(ctx context.Context, rabbitURL string) (*messaging.RabbitPublisher, error) {

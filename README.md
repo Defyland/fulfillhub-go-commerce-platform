@@ -279,6 +279,11 @@ OTEL_TRACES_EXPORTER='stdout' \
   go run ./cmd/fulfillhub-outbox-relay
 ```
 
+Relay throughput can be tuned with `OUTBOX_RELAY_BATCH_SIZE` and
+`OUTBOX_RELAY_INTERVAL`. The Compose stack defaults to a larger batch and a
+shorter interval so performance profiles do not leave the HTTP outbox backlog
+behind the request rate.
+
 Run one worker process for a queue:
 
 ```sh
