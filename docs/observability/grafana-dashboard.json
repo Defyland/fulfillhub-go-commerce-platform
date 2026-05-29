@@ -42,7 +42,7 @@
       "title": "RabbitMQ Queue Depth",
       "targets": [
         {
-          "expr": "fulfillhub_rabbitmq_queue_messages_ready{queue=~\"inventory.reserve|payments.authorize|shipments.create|orders.finalize|orders.compensate|notifications.email\"}",
+          "expr": "fulfillhub_rabbitmq_queue_messages_ready{queue=~\"inventory.reserve|payments.authorize|shipments.create|orders.finalize|orders.cancel|orders.compensate|notifications.email\"}",
           "legendFormat": "{{queue}}"
         }
       ],
