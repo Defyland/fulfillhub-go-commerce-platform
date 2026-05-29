@@ -49,6 +49,7 @@ const (
 	StatusCancellationPending OrderStatus = "cancellation_pending"
 	StatusCancelled           OrderStatus = "cancelled"
 	StatusCompleted           OrderStatus = "completed"
+	StatusFailed              OrderStatus = "failed"
 )
 
 type OrderItem struct {

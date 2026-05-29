@@ -34,6 +34,8 @@
   before their follow-up outbox events are published.
 - Worker-driven email notification queueing writes audit logs for customer
   communication diagnostics.
+- Worker-driven compensation records write audit logs for inventory, payment,
+  and shipment failure diagnostics.
 - DLQ replay requires `DATABASE_URL` and `OPS_ACTOR_ID`, then records durable
   `dlq.replay` audit details for success and failure attempts.
 - Operations JWTs are validated with HS256, expiry, subject, `operations` or

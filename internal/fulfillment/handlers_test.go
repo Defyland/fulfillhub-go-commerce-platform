@@ -126,6 +126,47 @@ func TestNotificationHandlerQueuesEmailAudit(t *testing.T) {
 	}
 }
 
+func TestCompensationHandlerRecordsTargetStatus(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	handler := handlerForTest(t, messaging.OrdersCompensateQueue, Dependencies{
+		Projector: store,
+		Clock: func() time.Time {
+			return time.Date(2026, 5, 29, 14, 0, 0, 0, time.UTC)
+		},
+	})
+
+	if err := handler.HandleEvent(context.Background(), commerce.OutboxEvent{
+		MessageID:     "msg_inventory_rejected",
+		CorrelationID: "cor_1",
+		EventType:     "inventory.rejected",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+	}); err != nil {
+		t.Fatalf("compensation handler returned error: %v", err)
+	}
+
+	compensated, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if compensated.Status != commerce.StatusFailed {
+		t.Fatalf("order status = %q, want failed", compensated.Status)
+	}
+	logs := service.AuditLogs()
+	last := logs[len(logs)-1]
+	if last.Action != "compensation.inventory_rejected" {
+		t.Fatalf("last audit action = %q, want compensation.inventory_rejected", last.Action)
+	}
+	if last.Details["target_order_status"] != string(commerce.StatusFailed) {
+		t.Fatalf("target status detail = %q, want failed", last.Details["target_order_status"])
+	}
+}
+
 func handlerForTest(t testing.TB, queue string, deps Dependencies) messaging.EventHandler {
 	t.Helper()
 	handler, err := HandlerForQueue(queue, deps)

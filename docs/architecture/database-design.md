@@ -15,6 +15,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 | `payment_authorizations` | Provider attempts and results | Unique successful authorization per `order_id` |
 | `shipments` | Carrier handoff and tracking state | Unique `tracking_number` when present |
 | `notification_events` | Customer communication projection | Unique source message ID |
+| `compensation_events` | Failure handling projection | Unique source message ID |
 | `outbox_events` | Pending messages for broker publication | Indexed by `published_at` and `created_at` |
 | `inbox_messages` | Per-consumer message deduplication | Unique `(consumer_name, message_id)` |
 | `audit_logs` | Operator and automated action trail with JSON details | Indexed by `merchant_id`, `order_id`, and `created_at` |
@@ -29,6 +30,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 - `inbox_messages(consumer_name, processed_at desc)` for replay diagnostics
 - `shipments(order_id)` for order read models
 - `notification_events(order_id, created_at desc)` for customer timeline diagnostics
+- `compensation_events(order_id, created_at desc)` for failure timeline diagnostics
 
 ## Transaction boundaries
 
@@ -100,7 +102,11 @@ The current worker records customer email queueing in one transaction:
 
 ### Compensation
 
-Release of inventory or voiding payment must follow the same pattern: mutate state, write audit evidence, write outbox event, and mark inbox processing in one transaction.
+The current worker records compensation projection state in one transaction:
+
+1. update `orders.status` to the target compensation status
+2. insert or update `compensation_events`
+3. insert `audit_logs` row for the compensation action
 
 ## Isolation assumptions
 

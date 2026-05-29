@@ -400,6 +400,63 @@ func (s *Store) RecordNotificationQueued(ctx context.Context, source commerce.Ou
 	return nil
 }
 
+func (s *Store) RecordCompensation(ctx context.Context, source commerce.OutboxEvent, status commerce.OrderStatus, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_compensation", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("messaging.message.id", source.MessageID),
+		attribute.String("fulfillhub.order_id", source.OrderID),
+		attribute.String("fulfillhub.merchant_id", source.MerchantID),
+		attribute.String("fulfillhub.source_event_type", source.EventType),
+		attribute.String("fulfillhub.target_order_status", string(status)),
+	))
+	defer finishSpan(span, &err, "record compensation")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record compensation: %w", err)
+	}
+	defer rollback(tx)
+
+	result, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET status = $2,
+			updated_at = $3,
+			version = version + 1
+		WHERE order_id = $1
+	`, source.OrderID, status, audit.CreatedAt)
+	if err != nil {
+		return fmt.Errorf("update compensated order status: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("inspect compensated order rows: %w", err)
+	}
+	if rows == 0 {
+		return commerce.ErrNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO compensation_events (
+			order_id, merchant_id, source_message_id, source_event_type,
+			action, target_order_status, status, correlation_id, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, 'recorded', $7, $8)
+		ON CONFLICT (source_message_id) DO UPDATE
+		SET target_order_status = EXCLUDED.target_order_status,
+			status = EXCLUDED.status,
+			correlation_id = EXCLUDED.correlation_id,
+			created_at = EXCLUDED.created_at
+	`, source.OrderID, source.MerchantID, source.MessageID, source.EventType, audit.Action, status, source.CorrelationID, audit.CreatedAt); err != nil {
+		return fmt.Errorf("upsert compensation event: %w", err)
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record compensation: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 	rows, err := s.db.QueryContext(context.Background(), `
 		SELECT message_id, correlation_id, event_type, order_id, merchant_id, occurred_at

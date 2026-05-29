@@ -161,6 +161,20 @@ func (s *MemoryStore) RecordNotificationQueued(_ context.Context, source OutboxE
 	return nil
 }
 
+func (s *MemoryStore) RecordCompensation(_ context.Context, source OutboxEvent, status OrderStatus, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	order, ok := s.orders[source.OrderID]
+	if !ok {
+		return ErrNotFound
+	}
+	order.Status = status
+	order.UpdatedAt = audit.CreatedAt
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
 func (s *MemoryStore) OutboxEvents() []OutboxEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

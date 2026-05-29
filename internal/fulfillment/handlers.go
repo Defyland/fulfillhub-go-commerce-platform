@@ -19,6 +19,7 @@ type Projector interface {
 	RecordPaymentAuthorized(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, payment commerce.Payment, audit commerce.AuditLog) error
 	RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) error
 	RecordNotificationQueued(ctx context.Context, source commerce.OutboxEvent, audit commerce.AuditLog) error
+	RecordCompensation(ctx context.Context, source commerce.OutboxEvent, status commerce.OrderStatus, audit commerce.AuditLog) error
 }
 
 type Dependencies struct {
@@ -53,12 +54,29 @@ func HandlerForQueue(queue string, deps Dependencies) (messaging.EventHandler, e
 			return queueNotification(ctx, deps, event)
 		}), nil
 	case messaging.OrdersCompensateQueue:
-		return messaging.HandlerFunc(func(context.Context, commerce.OutboxEvent) error {
-			return nil
+		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
+			return recordCompensation(ctx, deps, event)
 		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported worker queue %q", queue)
 	}
+}
+
+func recordCompensation(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
+	if deps.Projector == nil {
+		return fmt.Errorf("fulfillment projector is required")
+	}
+	status, action, err := compensationPlan(event.EventType)
+	if err != nil {
+		return err
+	}
+	if err := validateEventIdentity(event); err != nil {
+		return err
+	}
+	now := deps.Clock()
+	audit := systemAudit(event, action, now)
+	audit.Details["target_order_status"] = string(status)
+	return deps.Projector.RecordCompensation(ctx, event, status, audit)
 }
 
 func queueNotification(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
@@ -73,6 +91,19 @@ func queueNotification(ctx context.Context, deps Dependencies, event commerce.Ou
 	}
 	now := deps.Clock()
 	return deps.Projector.RecordNotificationQueued(ctx, event, systemAudit(event, "notification.email_queued", now))
+}
+
+func compensationPlan(eventType string) (commerce.OrderStatus, string, error) {
+	switch eventType {
+	case "inventory.rejected":
+		return commerce.StatusFailed, "compensation.inventory_rejected", nil
+	case "payment.failed":
+		return commerce.StatusCancelled, "compensation.payment_failed", nil
+	case "shipment.failed":
+		return commerce.StatusCancellationPending, "compensation.shipment_failed", nil
+	default:
+		return "", "", fmt.Errorf("unsupported compensation event %s", eventType)
+	}
 }
 
 func reserveInventory(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {

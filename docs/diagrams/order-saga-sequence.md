@@ -35,8 +35,7 @@ sequenceDiagram
 ```
 
 The current worker executable implements the happy path above with durable
-inventory, payment, shipment, and notification projections. Compensation
-projections are planned as the next worker slice.
+inventory, payment, shipment, notification, and compensation projections.
 
 Compensation rules:
 

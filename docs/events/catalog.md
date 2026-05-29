@@ -61,6 +61,8 @@
   `order.completed` through the transactional outbox.
 - The notification worker records durable email queueing projections for
   `order.completed` and `order.cancelled`.
+- The compensation worker records durable failure projections for
+  `inventory.rejected`, `payment.failed`, and `shipment.failed`.
 - `TestRabbitPublisherIntegration` verifies live RabbitMQ publish and route delivery when `RABBITMQ_URL` is available.
 
 ## Example event payload
