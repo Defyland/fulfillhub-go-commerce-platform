@@ -12,7 +12,7 @@ SCENARIOS='smoke load stress spike' ./scripts/run_compose_profile.sh
 
 Use `SCENARIOS='smoke'` for a short validation run. Set `KEEP_STACK=1` to leave
 the Compose stack running after the script exits. The harness sets
-`RATE_LIMIT_PER_MINUTE=10000` by default so latency profiling is not dominated
+`RATE_LIMIT_PER_MINUTE=60000` by default so latency profiling is not dominated
 by the operational Redis write quota; override it lower when intentionally
 profiling limiter rejections. It also waits up to `DRAIN_TIMEOUT_SECONDS=60`
 for unpublished outbox events and ready RabbitMQ messages to drain before
