@@ -241,10 +241,11 @@ func (s *Store) RecordInventoryReserved(ctx context.Context, source commerce.Out
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orders
-		SET updated_at = $2,
+		SET status = $2,
+			updated_at = $3,
 			version = version + 1
 		WHERE order_id = $1
-	`, source.OrderID, next.OccurredAt); err != nil {
+	`, source.OrderID, commerce.StatusInventoryReserved, next.OccurredAt); err != nil {
 		return fmt.Errorf("touch order after inventory reservation: %w", err)
 	}
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
@@ -350,13 +351,14 @@ func (s *Store) RecordPaymentAuthorized(ctx context.Context, source commerce.Out
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orders
-		SET payment_provider = $2,
-			payment_status = $3,
-			payment_authorization_id = $4,
-			updated_at = $5,
+		SET status = $2,
+			payment_provider = $3,
+			payment_status = $4,
+			payment_authorization_id = $5,
+			updated_at = $6,
 			version = version + 1
 		WHERE order_id = $1
-	`, source.OrderID, provider, payment.Status, payment.AuthorizationID, next.OccurredAt); err != nil {
+	`, source.OrderID, commerce.StatusPaymentAuthorized, provider, payment.Status, payment.AuthorizationID, next.OccurredAt); err != nil {
 		return fmt.Errorf("update order payment authorization: %w", err)
 	}
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
@@ -454,10 +456,11 @@ func (s *Store) RecordShipmentCreated(ctx context.Context, source commerce.Outbo
 	}
 	if _, err := tx.ExecContext(ctx, `
 		UPDATE orders
-		SET updated_at = $2,
+		SET status = $2,
+			updated_at = $3,
 			version = version + 1
 		WHERE order_id = $1
-	`, source.OrderID, next.OccurredAt); err != nil {
+	`, source.OrderID, commerce.StatusShipmentCreated, next.OccurredAt); err != nil {
 		return fmt.Errorf("touch order after shipment: %w", err)
 	}
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {

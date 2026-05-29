@@ -34,16 +34,19 @@ func TestWorkerHandlersAdvanceHappyPathAndCompleteOrder(t *testing.T) {
 	if err := inventory.HandleEvent(context.Background(), created); err != nil {
 		t.Fatalf("inventory handler returned error: %v", err)
 	}
+	assertOrderStatus(t, store, order.OrderID, commerce.StatusInventoryReserved)
 	inventoryReserved := lastOutboxEvent(service)
 	payment := handlerForTest(t, messaging.PaymentsAuthorizeQueue, deps)
 	if err := payment.HandleEvent(context.Background(), inventoryReserved); err != nil {
 		t.Fatalf("payment handler returned error: %v", err)
 	}
+	assertOrderStatus(t, store, order.OrderID, commerce.StatusPaymentAuthorized)
 	paymentAuthorized := lastOutboxEvent(service)
 	shipment := handlerForTest(t, messaging.ShipmentsCreateQueue, deps)
 	if err := shipment.HandleEvent(context.Background(), paymentAuthorized); err != nil {
 		t.Fatalf("shipment handler returned error: %v", err)
 	}
+	assertOrderStatus(t, store, order.OrderID, commerce.StatusShipmentCreated)
 	shipmentCreated := lastOutboxEvent(service)
 	finalizer := handlerForTest(t, messaging.OrdersFinalizeQueue, deps)
 	if err := finalizer.HandleEvent(context.Background(), shipmentCreated); err != nil {
@@ -550,6 +553,17 @@ func assertCausationChain(t testing.TB, events []commerce.OutboxEvent) {
 		if events[idx].CausationID != events[idx-1].MessageID {
 			t.Fatalf("event %s causation id = %q, want previous message id %q", events[idx].EventType, events[idx].CausationID, events[idx-1].MessageID)
 		}
+	}
+}
+
+func assertOrderStatus(t testing.TB, store *commerce.MemoryStore, orderID string, want commerce.OrderStatus) {
+	t.Helper()
+	order, err := store.GetOrder(context.Background(), orderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if order.Status != want {
+		t.Fatalf("order status = %q, want %q", order.Status, want)
 	}
 }
 

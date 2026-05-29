@@ -46,6 +46,9 @@ type OrderStatus string
 
 const (
 	StatusPendingFulfillment  OrderStatus = "pending_fulfillment"
+	StatusInventoryReserved   OrderStatus = "inventory_reserved"
+	StatusPaymentAuthorized   OrderStatus = "payment_authorized"
+	StatusShipmentCreated     OrderStatus = "shipment_created"
 	StatusCancellationPending OrderStatus = "cancellation_pending"
 	StatusCancelled           OrderStatus = "cancelled"
 	StatusCompleted           OrderStatus = "completed"

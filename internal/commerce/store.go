@@ -125,6 +125,7 @@ func (s *MemoryStore) RecordInventoryReserved(_ context.Context, source OutboxEv
 	for idx := range order.Items {
 		order.Items[idx].ReservationStatus = "reserved"
 	}
+	order.Status = StatusInventoryReserved
 	order.UpdatedAt = next.OccurredAt
 	s.outbox = append(s.outbox, next)
 	s.auditLogs = append(s.auditLogs, audit)
@@ -160,6 +161,7 @@ func (s *MemoryStore) RecordPaymentAuthorized(_ context.Context, source OutboxEv
 		payment.Provider = order.Payment.Provider
 	}
 	order.Payment = &payment
+	order.Status = StatusPaymentAuthorized
 	order.UpdatedAt = next.OccurredAt
 	s.outbox = append(s.outbox, next)
 	s.auditLogs = append(s.auditLogs, audit)
@@ -197,6 +199,7 @@ func (s *MemoryStore) RecordShipmentCreated(_ context.Context, source OutboxEven
 		return ErrNotFound
 	}
 	order.Shipment = &shipment
+	order.Status = StatusShipmentCreated
 	order.UpdatedAt = next.OccurredAt
 	s.outbox = append(s.outbox, next)
 	s.auditLogs = append(s.auditLogs, audit)

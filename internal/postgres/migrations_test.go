@@ -300,6 +300,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record inventory reserved: %v", err)
 	}
+	assertPostgresOrderStatus(t, ctx, store, order.OrderID, commerce.StatusInventoryReserved)
 	assertInventoryQuantities(t, ctx, store, order.MerchantID, "SKU-CHAIR-BLK", 4, 1)
 	var reservedWarehouseID string
 	if err := store.DB().QueryRowContext(ctx, `
@@ -336,6 +337,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record payment authorized: %v", err)
 	}
+	assertPostgresOrderStatus(t, ctx, store, order.OrderID, commerce.StatusPaymentAuthorized)
 	shipmentEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_shipment_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: event.CorrelationID,
@@ -362,6 +364,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record shipment created: %v", err)
 	}
+	assertPostgresOrderStatus(t, ctx, store, order.OrderID, commerce.StatusShipmentCreated)
 	shipment, err := store.GetShipment(ctx, shipmentID)
 	if err != nil {
 		t.Fatalf("get shipment: %v", err)
@@ -732,5 +735,16 @@ func assertInventoryQuantities(t testing.TB, ctx context.Context, store *Store, 
 	}
 	if gotAvailable != available || gotReserved != reserved {
 		t.Fatalf("inventory %s = available %d reserved %d, want available %d reserved %d", sku, gotAvailable, gotReserved, available, reserved)
+	}
+}
+
+func assertPostgresOrderStatus(t testing.TB, ctx context.Context, store *Store, orderID string, want commerce.OrderStatus) {
+	t.Helper()
+	order, err := store.GetOrder(ctx, orderID)
+	if err != nil {
+		t.Fatalf("get order %s: %v", orderID, err)
+	}
+	if order.Status != want {
+		t.Fatalf("order %s status = %q, want %q", orderID, order.Status, want)
 	}
 }
