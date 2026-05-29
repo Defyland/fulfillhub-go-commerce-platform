@@ -288,6 +288,57 @@ func TestNotificationHandlerQueuesEmailAudit(t *testing.T) {
 	}
 }
 
+func TestCancellationHandlerFinalizesOrderAndEmitsCancelledEvent(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	if _, err := service.CancelOrder(order.OrderID, "cor_cancel", commerce.AuditActor{
+		Type: "merchant_user",
+		ID:   "usr_93842",
+	}); err != nil {
+		t.Fatalf("CancelOrder returned error: %v", err)
+	}
+	cancelRequested := lastOutboxEvent(service)
+	ids := []string{"msg_cancelled"}
+	now := time.Date(2026, 5, 29, 13, 30, 0, 0, time.UTC)
+	handler := handlerForTest(t, messaging.OrdersCancelQueue, Dependencies{
+		Orders: store,
+		Clock:  func() time.Time { return now },
+		NewID: func(string) string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	})
+
+	if err := handler.HandleEvent(context.Background(), cancelRequested); err != nil {
+		t.Fatalf("cancellation handler returned error: %v", err)
+	}
+
+	cancelled, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if cancelled.Status != commerce.StatusCancelled {
+		t.Fatalf("order status = %q, want cancelled", cancelled.Status)
+	}
+	cancelledEvent := lastOutboxEvent(service)
+	if cancelledEvent.EventType != "order.cancelled" {
+		t.Fatalf("last event type = %q, want order.cancelled", cancelledEvent.EventType)
+	}
+	if cancelledEvent.CausationID != cancelRequested.MessageID {
+		t.Fatalf("cancelled causation id = %q, want %q", cancelledEvent.CausationID, cancelRequested.MessageID)
+	}
+	logs := service.AuditLogs()
+	last := logs[len(logs)-1]
+	if last.Action != "order.cancelled" {
+		t.Fatalf("last audit action = %q, want order.cancelled", last.Action)
+	}
+}
+
 func TestCompensationHandlerRecordsTargetStatus(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)

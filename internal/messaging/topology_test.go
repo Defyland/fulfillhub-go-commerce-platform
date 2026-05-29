@@ -34,3 +34,37 @@ func TestQueueTopologiesDefineRetryQueuesAndDLQs(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueTopologiesRouteCancellationRequests(t *testing.T) {
+	topology, ok := findTopology(OrdersCancelQueue)
+	if !ok {
+		t.Fatal("orders cancellation queue topology missing")
+	}
+	if !contains(topology.RoutingKeys, "order.cancel_requested") {
+		t.Fatalf("orders cancellation routing keys = %v, want order.cancel_requested", topology.RoutingKeys)
+	}
+	if topology.RetryQueue != "orders.cancel.retry.15s" {
+		t.Fatalf("orders cancellation retry queue = %q", topology.RetryQueue)
+	}
+	if topology.DLQ != "orders.cancel.dlq" {
+		t.Fatalf("orders cancellation dlq = %q", topology.DLQ)
+	}
+}
+
+func findTopology(queue string) (QueueTopology, bool) {
+	for _, topology := range QueueTopologies() {
+		if topology.Queue == queue {
+			return topology, true
+		}
+	}
+	return QueueTopology{}, false
+}
+
+func contains(values []string, expected string) bool {
+	for _, value := range values {
+		if value == expected {
+			return true
+		}
+	}
+	return false
+}

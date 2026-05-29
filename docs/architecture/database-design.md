@@ -44,13 +44,22 @@ One transaction must:
 3. insert `outbox_events` row for `order.created`
 4. insert initial `audit_logs` row for `order.create`
 
-### Order cancellation
+### Order cancellation request
 
 One transaction must:
 
 1. update `orders.status` and optimistic `version`
 2. insert `outbox_events` row for `order.cancel_requested`
 3. insert `audit_logs` row for `order.cancel_requested`
+
+### Order cancellation finalization
+
+The current cancellation worker finalizes accepted cancellation requests in one
+transaction:
+
+1. update `orders.status` to `cancelled`
+2. insert `outbox_events` row for `order.cancelled`
+3. insert `audit_logs` row for `order.cancelled`
 
 ### DLQ replay
 

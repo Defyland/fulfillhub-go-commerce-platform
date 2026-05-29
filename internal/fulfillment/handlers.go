@@ -85,6 +85,10 @@ func HandlerForQueue(queue string, deps Dependencies) (messaging.EventHandler, e
 		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
 			return completeOrder(ctx, deps, event)
 		}), nil
+	case messaging.OrdersCancelQueue:
+		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
+			return cancelOrder(ctx, deps, event)
+		}), nil
 	case messaging.NotificationsEmailQueue:
 		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
 			return queueNotification(ctx, deps, event)
@@ -277,6 +281,20 @@ func completeOrder(ctx context.Context, deps Dependencies, event commerce.Outbox
 	now := deps.Clock()
 	completed := nextEventAt(deps, event, "order.completed", now)
 	_, err := deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCompleted, now, completed, systemAudit(event, "order.completed", now))
+	return err
+}
+
+func cancelOrder(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
+	if deps.Orders == nil {
+		return fmt.Errorf("order status updater is required")
+	}
+	if err := validateEvent(event, "order.cancel_requested"); err != nil {
+		return err
+	}
+
+	now := deps.Clock()
+	cancelled := nextEventAt(deps, event, "order.cancelled", now)
+	_, err := deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCancelled, now, cancelled, systemAudit(event, "order.cancelled", now))
 	return err
 }
 

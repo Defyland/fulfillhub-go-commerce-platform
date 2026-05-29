@@ -14,6 +14,7 @@ const (
 	PaymentsAuthorizeQueue  = "payments.authorize"
 	ShipmentsCreateQueue    = "shipments.create"
 	OrdersFinalizeQueue     = "orders.finalize"
+	OrdersCancelQueue       = "orders.cancel"
 	OrdersCompensateQueue   = "orders.compensate"
 	NotificationsEmailQueue = "notifications.email"
 )
@@ -38,6 +39,7 @@ func QueueNames() []string {
 		PaymentsAuthorizeQueue,
 		ShipmentsCreateQueue,
 		OrdersFinalizeQueue,
+		OrdersCancelQueue,
 		OrdersCompensateQueue,
 		NotificationsEmailQueue,
 	}
@@ -72,6 +74,13 @@ func QueueTopologies() []QueueTopology {
 			RetryQueue:  "orders.finalize.retry.15s",
 			RetryTTL:    15 * time.Second,
 			DLQ:         "orders.finalize.dlq",
+		},
+		{
+			Queue:       OrdersCancelQueue,
+			RoutingKeys: []string{"order.cancel_requested"},
+			RetryQueue:  "orders.cancel.retry.15s",
+			RetryTTL:    15 * time.Second,
+			DLQ:         "orders.cancel.dlq",
 		},
 		{
 			Queue:       OrdersCompensateQueue,

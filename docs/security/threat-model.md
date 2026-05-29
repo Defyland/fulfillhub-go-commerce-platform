@@ -33,8 +33,9 @@
   incident correlation and can be exported to the local OTLP collector.
 - `/metrics` can require a dedicated bearer token when
   `METRICS_BEARER_TOKEN` is configured.
-- `order.create`, `order.cancel_requested`, and worker-driven `order.completed`
-  audit logs are written with actor and correlation metadata.
+- `order.create`, `order.cancel_requested`, worker-driven `order.completed`,
+  and worker-driven `order.cancelled` audit logs are written with actor and
+  correlation metadata.
 - Worker-driven inventory, payment, and shipment projections write audit logs
   before their follow-up outbox events are published.
 - Worker-driven email notification queueing writes audit logs for customer

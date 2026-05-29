@@ -116,6 +116,24 @@ services:
       otel-collector:
         condition: service_started
 
+  orders-canceller:
+    build: .
+    command: ["/app/fulfillhub-worker"]
+    environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-orders-canceller
+      DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      WORKER_QUEUE: orders.cancel
+      CONSUMER_NAME: orders-canceller
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
   notifications-worker:
     build: .
     command: ["/app/fulfillhub-worker"]

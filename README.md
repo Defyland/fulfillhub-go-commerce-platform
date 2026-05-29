@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, causal message metadata, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, OpenTelemetry OTLP tracing through a local collector, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, causal message metadata, workerized fulfillment happy path with durable inventory/payment/shipment/notification/cancellation/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, OpenTelemetry OTLP tracing through a local collector, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
 
 ## What is this product?
 
@@ -113,6 +113,8 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
 - Shipment provider failures are converted to `shipment.failed` outbox events
   for compensation and operations visibility
 - Order finalizer consumes shipment creation, durably marks the order `completed`, and writes `order.completed` to the outbox
+- Order cancellation worker consumes `order.cancel_requested`, durably marks
+  the order `cancelled`, and writes `order.cancelled` to the outbox
 - Notification worker consumes order completion or cancellation and records a durable email notification projection
 - Compensation worker consumes inventory, payment, or shipment failure events and records durable compensation outcomes
 - Consumer idempotency is modeled through inbox deduplication, bounded retry

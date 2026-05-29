@@ -19,6 +19,7 @@
 | `payment.failed` | Payments | Orders, inventory release |
 | `shipment.created` | Shipments | Orders, notifications |
 | `shipment.failed` | Shipments | Orders, payments |
+| `order.cancel_requested` | Orders | Orders |
 | `order.completed` | Orders | Notifications, analytics |
 | `order.cancelled` | Orders | Notifications, analytics |
 
@@ -30,6 +31,7 @@
 | `payments.authorize` | `inventory.reserved` | `payments.authorize.retry.15s` | `payments.authorize.dlq` |
 | `shipments.create` | `payment.authorized` | `shipments.create.retry.30s` | `shipments.create.dlq` |
 | `orders.finalize` | `shipment.created` | `orders.finalize.retry.15s` | `orders.finalize.dlq` |
+| `orders.cancel` | `order.cancel_requested` | `orders.cancel.retry.15s` | `orders.cancel.dlq` |
 | `orders.compensate` | `inventory.rejected`, `payment.failed`, `shipment.failed` | `orders.compensate.retry.15s` | `orders.compensate.dlq` |
 | `notifications.email` | `order.completed`, `order.cancelled` | `notifications.email.retry.60s` | `notifications.email.dlq` |
 
@@ -45,7 +47,7 @@
 
 ## Implementation status
 
-- The API writes outbox events for order creation and cancellation.
+- The API writes outbox events for order creation and cancellation requests.
 - The PostgreSQL store can load pending outbox events and mark them published.
 - Outbox rows persist `causation_id`; API-originated root events use their own
   `message_id`, and worker-emitted saga events use the source message ID.
@@ -60,8 +62,8 @@
   nack exhausted failures to DLQs.
 - RabbitMQ topology declaration creates each primary queue, retry queue, and
   dead-letter queue listed in the queue design table.
-- `cmd/fulfillhub-worker` consumes inventory, payment, shipment, and order
-  finalization queues for the current happy-path saga.
+- `cmd/fulfillhub-worker` consumes inventory, payment, shipment, order
+  finalization, order cancellation, notification, and compensation queues.
 - Inventory, payment, and shipment workers persist their projections and write
   the next saga event through the transactional outbox instead of publishing
   directly to RabbitMQ.
@@ -76,6 +78,8 @@
   failure event.
 - The order finalizer updates the order to `completed` and writes
   `order.completed` through the transactional outbox.
+- The order cancellation worker updates the order to `cancelled` and writes
+  `order.cancelled` through the transactional outbox.
 - The notification worker records durable email queueing projections for
   `order.completed` and `order.cancelled`.
 - The compensation worker records durable failure projections for

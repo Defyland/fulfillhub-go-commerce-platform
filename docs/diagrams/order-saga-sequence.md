@@ -11,6 +11,7 @@ sequenceDiagram
   participant Payment
   participant Shipment
   participant Orders as Orders Finalizer
+  participant Cancel as Orders Canceller
   participant Notify as Notification Worker
 
   Merchant->>API: POST /api/v1/orders
@@ -32,10 +33,20 @@ sequenceDiagram
   Relay->>MQ: publish order.completed
   MQ->>Notify: consume order.completed
   Notify->>DB: persist notification_events + audit log
+
+  Merchant->>API: POST /api/v1/orders/{id}/cancel
+  API->>DB: update cancellation_pending + outbox event
+  Relay->>MQ: publish order.cancel_requested
+  MQ->>Cancel: consume order.cancel_requested
+  Cancel->>DB: update order cancelled + outbox event
+  Relay->>MQ: publish order.cancelled
+  MQ->>Notify: consume order.cancelled
+  Notify->>DB: persist notification_events + audit log
 ```
 
 The current worker executable implements the happy path above with durable
-inventory, payment, shipment, notification, and compensation projections.
+inventory, payment, shipment, cancellation, notification, and compensation
+projections.
 
 Compensation rules:
 
