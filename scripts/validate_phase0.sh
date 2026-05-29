@@ -84,6 +84,7 @@ internal/postgres/migrations/002_audit_details.sql
 internal/postgres/migrations/003_fulfillment_projections.sql
 internal/postgres/migrations/004_notification_events.sql
 internal/postgres/migrations/005_compensation_events.sql
+internal/postgres/migrations/006_outbox_causation.sql
 internal/providers/payment.go
 internal/providers/providers_test.go
 internal/providers/shipment.go

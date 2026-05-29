@@ -49,6 +49,7 @@ The current executable slice includes:
 - in-memory order store and outbox event recording
 - embedded PostgreSQL migrations and SQL-backed order/outbox/audit persistence
 - RabbitMQ publisher topology and outbox relay process
+- persisted and published message `correlation_id` and `causation_id`
 - RabbitMQ consumer primitive with inbox deduplication, retry scheduling, and explicit ack/nack behavior
 - fulfillment worker executable with durable inventory, payment, shipment, notification, compensation, and order-completion projections
 - inventory reservation failure projection through transactional `inventory.rejected` events

@@ -44,6 +44,7 @@ func TestRabbitPublisherIntegration(t *testing.T) {
 	event := commerce.OutboxEvent{
 		MessageID:     "msg_integration_" + time.Now().UTC().Format("20060102150405"),
 		CorrelationID: "cor_integration",
+		CausationID:   "msg_root_integration",
 		EventType:     "order.created",
 		OrderID:       "ord_integration",
 		MerchantID:    "mer_integration",
@@ -71,6 +72,9 @@ func TestRabbitPublisherIntegration(t *testing.T) {
 		if delivery.CorrelationId != event.CorrelationID {
 			t.Fatalf("correlation id = %q, want %q", delivery.CorrelationId, event.CorrelationID)
 		}
+		if delivery.Headers["causation_id"] != event.CausationID {
+			t.Fatalf("causation header = %q, want %q", delivery.Headers["causation_id"], event.CausationID)
+		}
 		if delivery.Type != event.EventType {
 			t.Fatalf("type = %q, want %q", delivery.Type, event.EventType)
 		}
@@ -78,7 +82,7 @@ func TestRabbitPublisherIntegration(t *testing.T) {
 		if err := json.Unmarshal(delivery.Body, &decoded); err != nil {
 			t.Fatalf("decode delivery body: %v", err)
 		}
-		if decoded.OrderID != event.OrderID || decoded.MerchantID != event.MerchantID {
+		if decoded.OrderID != event.OrderID || decoded.MerchantID != event.MerchantID || decoded.CausationID != event.CausationID {
 			t.Fatalf("decoded event = %+v, want order/merchant from published event", decoded)
 		}
 		return

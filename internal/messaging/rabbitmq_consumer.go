@@ -70,6 +70,7 @@ func (c *RabbitConsumer) PublishRetry(ctx context.Context, delivery amqp.Deliver
 	}
 	headers := cloneHeaders(delivery.Headers)
 	headers["fulfillhub_retry_attempt"] = int32(attempt)
+	headers["causation_id"] = firstNonEmpty(headerString(headers, "causation_id"), event.CausationID, event.MessageID)
 	if err := c.channel.PublishWithContext(ctx, RetryExchange, routingKey, false, false, amqp.Publishing{
 		ContentType:   delivery.ContentType,
 		DeliveryMode:  amqp.Persistent,

@@ -50,9 +50,11 @@ func TestWorkerHandlersAdvanceHappyPathAndCompleteOrder(t *testing.T) {
 		t.Fatalf("finalizer handler returned error: %v", err)
 	}
 
-	if got := eventTypes(service.OutboxEvents()); len(got) != 5 || got[1] != "inventory.reserved" || got[2] != "payment.authorized" || got[3] != "shipment.created" || got[4] != "order.completed" {
+	events := service.OutboxEvents()
+	if got := eventTypes(events); len(got) != 5 || got[1] != "inventory.reserved" || got[2] != "payment.authorized" || got[3] != "shipment.created" || got[4] != "order.completed" {
 		t.Fatalf("outbox event types = %v, want transactional fulfillment progression", got)
 	}
+	assertCausationChain(t, events)
 	completed, err := store.GetOrder(context.Background(), order.OrderID)
 	if err != nil {
 		t.Fatalf("GetOrder returned error: %v", err)
@@ -83,6 +85,7 @@ func TestHandlerForQueueRejectsUnexpectedEventType(t *testing.T) {
 	err := handler.HandleEvent(context.Background(), commerce.OutboxEvent{
 		MessageID:     "msg_1",
 		CorrelationID: "cor_1",
+		CausationID:   "msg_1",
 		EventType:     "order.created",
 		OrderID:       "ord_1",
 		MerchantID:    "mer_1",
@@ -267,6 +270,7 @@ func TestNotificationHandlerQueuesEmailAudit(t *testing.T) {
 	if err := handler.HandleEvent(context.Background(), commerce.OutboxEvent{
 		MessageID:     "msg_completed",
 		CorrelationID: "cor_1",
+		CausationID:   "msg_shipment",
 		EventType:     "order.completed",
 		OrderID:       order.OrderID,
 		MerchantID:    order.MerchantID,
@@ -301,6 +305,7 @@ func TestCompensationHandlerRecordsTargetStatus(t *testing.T) {
 	if err := handler.HandleEvent(context.Background(), commerce.OutboxEvent{
 		MessageID:     "msg_inventory_rejected",
 		CorrelationID: "cor_1",
+		CausationID:   "msg_created",
 		EventType:     "inventory.rejected",
 		OrderID:       order.OrderID,
 		MerchantID:    order.MerchantID,
@@ -345,6 +350,21 @@ func eventTypes(events []commerce.OutboxEvent) []string {
 func lastOutboxEvent(service *commerce.Service) commerce.OutboxEvent {
 	events := service.OutboxEvents()
 	return events[len(events)-1]
+}
+
+func assertCausationChain(t testing.TB, events []commerce.OutboxEvent) {
+	t.Helper()
+	if len(events) == 0 {
+		t.Fatal("causation chain requires at least one event")
+	}
+	if events[0].CausationID != events[0].MessageID {
+		t.Fatalf("root causation id = %q, want message id %q", events[0].CausationID, events[0].MessageID)
+	}
+	for idx := 1; idx < len(events); idx++ {
+		if events[idx].CausationID != events[idx-1].MessageID {
+			t.Fatalf("event %s causation id = %q, want previous message id %q", events[idx].EventType, events[idx].CausationID, events[idx-1].MessageID)
+		}
+	}
 }
 
 func validCreateOrderRequest() commerce.CreateOrderRequest {

@@ -60,7 +60,8 @@ Current status:
 ## Observability model
 
 - Every request creates a `request_id` and root trace span.
-- Every emitted message carries `correlation_id` and `causation_id`.
+- Every emitted message carries `correlation_id` and `causation_id` in the
+  persisted outbox payload and RabbitMQ headers.
 - API request logs are structured JSON and include status, latency, request ID,
   correlation ID, actor type, and merchant ID when authenticated.
 - HTTP spans extract W3C `traceparent` headers and can be exported locally with

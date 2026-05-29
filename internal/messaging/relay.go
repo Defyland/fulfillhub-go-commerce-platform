@@ -54,6 +54,7 @@ func (r Relay) RunOnce(ctx context.Context, limit int) (int, error) {
 			attribute.String("messaging.message.id", event.MessageID),
 			attribute.String("fulfillhub.event_type", event.EventType),
 			attribute.String("fulfillhub.correlation_id", event.CorrelationID),
+			attribute.String("fulfillhub.causation_id", event.CausationID),
 			attribute.String("fulfillhub.order_id", event.OrderID),
 			attribute.String("fulfillhub.merchant_id", event.MerchantID),
 		))

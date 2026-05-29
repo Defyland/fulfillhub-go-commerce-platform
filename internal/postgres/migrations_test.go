@@ -75,6 +75,27 @@ func TestMigrationsAddCompensationEvents(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddOutboxCausation(t *testing.T) {
+	initBody, err := migrationsFS.ReadFile("migrations/001_init.sql")
+	if err != nil {
+		t.Fatalf("read init migration: %v", err)
+	}
+	if !strings.Contains(string(initBody), "causation_id TEXT NOT NULL") {
+		t.Fatal("initial migration does not require outbox_events.causation_id")
+	}
+
+	body, err := migrationsFS.ReadFile("migrations/006_outbox_causation.sql")
+	if err != nil {
+		t.Fatalf("read causation migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{"ADD COLUMN IF NOT EXISTS causation_id", "SET causation_id = message_id", "idx_outbox_events_causation"} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("causation migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -130,6 +151,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	event := commerce.OutboxEvent{
 		MessageID:     "msg_pg_test_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: "cor_pg_test",
+		CausationID:   "msg_pg_test_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		EventType:     "order.created",
 		OrderID:       order.OrderID,
 		MerchantID:    order.MerchantID,
@@ -169,6 +191,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	inventoryEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_inventory_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: event.CorrelationID,
+		CausationID:   event.MessageID,
 		EventType:     "inventory.reserved",
 		OrderID:       order.OrderID,
 		MerchantID:    order.MerchantID,
@@ -188,6 +211,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	paymentEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_payment_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: event.CorrelationID,
+		CausationID:   inventoryEvent.MessageID,
 		EventType:     "payment.authorized",
 		OrderID:       order.OrderID,
 		MerchantID:    order.MerchantID,
@@ -211,6 +235,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	shipmentEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_shipment_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: event.CorrelationID,
+		CausationID:   paymentEvent.MessageID,
 		EventType:     "shipment.created",
 		OrderID:       order.OrderID,
 		MerchantID:    order.MerchantID,
@@ -248,6 +273,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	completedEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_completed_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: event.CorrelationID,
+		CausationID:   shipmentEvent.MessageID,
 		EventType:     "order.completed",
 		OrderID:       order.OrderID,
 		MerchantID:    order.MerchantID,
@@ -278,6 +304,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	compensationEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_compensation_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: event.CorrelationID,
+		CausationID:   completedEvent.MessageID,
 		EventType:     "inventory.rejected",
 		OrderID:       order.OrderID,
 		MerchantID:    order.MerchantID,
@@ -353,6 +380,9 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}
 	if len(pending) == 0 {
 		t.Fatal("expected pending outbox event")
+	}
+	if pending[0].CausationID == "" {
+		t.Fatal("expected pending outbox event to include causation id")
 	}
 	pendingCount, err := store.PendingOutboxCount(ctx)
 	if err != nil {

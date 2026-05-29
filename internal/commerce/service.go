@@ -90,9 +90,11 @@ func (s *Service) CreateOrderContext(ctx context.Context, merchantID, idempotenc
 		UpdatedAt: now,
 	}
 
+	messageID := s.nextID("msg")
 	event := OutboxEvent{
-		MessageID:     s.nextID("msg"),
+		MessageID:     messageID,
 		CorrelationID: correlationID,
+		CausationID:   messageID,
 		EventType:     "order.created",
 		OrderID:       order.OrderID,
 		MerchantID:    merchantID,
@@ -134,9 +136,11 @@ func (s *Service) CancelOrderContext(ctx context.Context, orderID, correlationID
 	}
 
 	now := s.clock()
+	messageID := s.nextID("msg")
 	event := OutboxEvent{
-		MessageID:     s.nextID("msg"),
+		MessageID:     messageID,
 		CorrelationID: correlationID,
+		CausationID:   messageID,
 		EventType:     "order.cancel_requested",
 		OrderID:       orderID,
 		MerchantID:    order.MerchantID,

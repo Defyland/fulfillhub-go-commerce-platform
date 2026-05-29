@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, OpenTelemetry OTLP tracing through a local collector, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, causal message metadata, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, OpenTelemetry OTLP tracing through a local collector, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
 
 ## What is this product?
 
@@ -46,7 +46,7 @@ The current implementation is a Go modular monolith with strongly isolated packa
 - HTTP API entrypoint for merchant and operations access
 - Domain modules for orders, inventory, payments, shipments, notifications, and reporting
 - In-memory store for fast local tests and PostgreSQL for transactional state, outbox, inbox, and audit logs when `DATABASE_URL` is configured
-- Transactional outbox events with a RabbitMQ relay for domain fan-out and asynchronous side effects
+- Transactional outbox events with correlation and causation IDs, plus a RabbitMQ relay for domain fan-out and asynchronous side effects
 - Redis-backed rate limiting when `REDIS_URL` is configured
 - OpenTelemetry Collector, Prometheus, and Grafana for observability
 

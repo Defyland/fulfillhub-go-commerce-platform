@@ -31,6 +31,9 @@ func TestCreateOrderDerivesMerchantAndWritesOutbox(t *testing.T) {
 	if events[0].EventType != "order.created" {
 		t.Fatalf("event type = %q, want order.created", events[0].EventType)
 	}
+	if events[0].CausationID != events[0].MessageID {
+		t.Fatalf("root causation id = %q, want message id %q", events[0].CausationID, events[0].MessageID)
+	}
 	logs := service.AuditLogs()
 	if len(logs) != 1 {
 		t.Fatalf("audit logs = %d, want 1", len(logs))
@@ -98,6 +101,10 @@ func TestCancelOrderWritesAuditLog(t *testing.T) {
 	}
 	if cancelLog.CorrelationID != "cor_cancel" {
 		t.Fatalf("cancel audit correlation = %q, want cor_cancel", cancelLog.CorrelationID)
+	}
+	events := service.OutboxEvents()
+	if events[1].CausationID != events[1].MessageID {
+		t.Fatalf("cancel causation id = %q, want message id %q", events[1].CausationID, events[1].MessageID)
 	}
 }
 

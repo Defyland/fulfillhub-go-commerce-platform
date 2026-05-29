@@ -294,6 +294,9 @@ func validateEventIdentity(event commerce.OutboxEvent) error {
 	if event.CorrelationID == "" {
 		return fmt.Errorf("correlation id is required")
 	}
+	if event.CausationID == "" {
+		return fmt.Errorf("causation id is required")
+	}
 	if event.OrderID == "" {
 		return fmt.Errorf("order id is required")
 	}
@@ -311,6 +314,7 @@ func nextEventAt(deps Dependencies, previous commerce.OutboxEvent, eventType str
 	return commerce.OutboxEvent{
 		MessageID:     deps.NewID("msg"),
 		CorrelationID: previous.CorrelationID,
+		CausationID:   previous.MessageID,
 		EventType:     eventType,
 		OrderID:       previous.OrderID,
 		MerchantID:    previous.MerchantID,

@@ -69,6 +69,7 @@ func (c Consumer) ProcessDelivery(ctx context.Context, delivery amqp.Delivery) (
 	span.SetAttributes(
 		attribute.String("fulfillhub.event_type", event.EventType),
 		attribute.String("fulfillhub.correlation_id", event.CorrelationID),
+		attribute.String("fulfillhub.causation_id", event.CausationID),
 		attribute.String("fulfillhub.order_id", event.OrderID),
 		attribute.String("fulfillhub.merchant_id", event.MerchantID),
 	)
@@ -167,10 +168,26 @@ func decodeDelivery(delivery amqp.Delivery) (commerce.OutboxEvent, error) {
 	if event.CorrelationID == "" {
 		event.CorrelationID = delivery.CorrelationId
 	}
+	if event.CausationID == "" {
+		event.CausationID = firstNonEmpty(headerString(delivery.Headers, "causation_id"), delivery.MessageId, event.MessageID)
+	}
 	if event.EventType == "" {
 		event.EventType = delivery.Type
 	}
 	return event, nil
+}
+
+func headerString(headers amqp.Table, key string) string {
+	if headers == nil {
+		return ""
+	}
+	switch value := headers[key].(type) {
+	case string:
+		return value
+	case []byte:
+		return string(value)
+	}
+	return ""
 }
 
 func ackDelivery(delivery amqp.Delivery) error {

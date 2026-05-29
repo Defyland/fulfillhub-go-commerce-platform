@@ -16,7 +16,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 | `shipments` | Carrier handoff and tracking state | Unique `tracking_number` when present |
 | `notification_events` | Customer communication projection | Unique source message ID |
 | `compensation_events` | Failure handling projection | Unique source message ID |
-| `outbox_events` | Pending messages for broker publication | Indexed by `published_at` and `created_at` |
+| `outbox_events` | Pending messages for broker publication | Persisted correlation and causation IDs |
 | `inbox_messages` | Per-consumer message deduplication | Unique `(consumer_name, message_id)` |
 | `audit_logs` | Operator and automated action trail with JSON details | Indexed by `merchant_id`, `order_id`, and `created_at` |
 
@@ -26,7 +26,8 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 - `orders(merchant_id, status, created_at desc)` for operations search
 - `inventory_items(warehouse_id, sku)` unique lookup path
 - `stock_reservations(order_id, status)` for reservation reconciliation
-- `outbox_events(published_at, created_at)` for relay polling
+- `outbox_events(published_at, occurred_at)` for relay polling
+- `outbox_events(correlation_id, causation_id)` for saga trace reconstruction
 - `inbox_messages(consumer_name, processed_at desc)` for replay diagnostics
 - `shipments(order_id)` for order read models
 - `notification_events(order_id, created_at desc)` for customer timeline diagnostics

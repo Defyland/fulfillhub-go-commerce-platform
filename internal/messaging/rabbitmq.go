@@ -48,6 +48,7 @@ func (p *RabbitPublisher) Close() error {
 }
 
 func (p *RabbitPublisher) Publish(ctx context.Context, event commerce.OutboxEvent) error {
+	event = event.WithDefaultCausation()
 	ctx, span := messagingTracer().Start(ctx, "rabbitmq.publish", trace.WithAttributes(
 		attribute.String("messaging.system", "rabbitmq"),
 		attribute.String("messaging.destination.name", DomainExchange),
@@ -55,6 +56,7 @@ func (p *RabbitPublisher) Publish(ctx context.Context, event commerce.OutboxEven
 		attribute.String("messaging.message.id", event.MessageID),
 		attribute.String("fulfillhub.event_type", event.EventType),
 		attribute.String("fulfillhub.correlation_id", event.CorrelationID),
+		attribute.String("fulfillhub.causation_id", event.CausationID),
 		attribute.String("fulfillhub.order_id", event.OrderID),
 		attribute.String("fulfillhub.merchant_id", event.MerchantID),
 	))
@@ -67,8 +69,9 @@ func (p *RabbitPublisher) Publish(ctx context.Context, event commerce.OutboxEven
 		return fmt.Errorf("marshal event: %w", err)
 	}
 	headers := amqp.Table{
-		"merchant_id": event.MerchantID,
-		"order_id":    event.OrderID,
+		"causation_id": event.CausationID,
+		"merchant_id":  event.MerchantID,
+		"order_id":     event.OrderID,
 	}
 	injectTraceHeaders(ctx, headers)
 	if err := p.channel.PublishWithContext(ctx, DomainExchange, RoutingKey(event.EventType), false, false, amqp.Publishing{

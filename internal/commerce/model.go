@@ -100,10 +100,18 @@ type Order struct {
 }
 
 type OutboxEvent struct {
-	MessageID     string
-	CorrelationID string
-	EventType     string
-	OrderID       string
-	MerchantID    string
-	OccurredAt    time.Time
+	MessageID     string    `json:"message_id"`
+	CorrelationID string    `json:"correlation_id"`
+	CausationID   string    `json:"causation_id"`
+	EventType     string    `json:"event_type"`
+	OrderID       string    `json:"order_id"`
+	MerchantID    string    `json:"merchant_id"`
+	OccurredAt    time.Time `json:"occurred_at"`
+}
+
+func (e OutboxEvent) WithDefaultCausation() OutboxEvent {
+	if e.CausationID == "" {
+		e.CausationID = e.MessageID
+	}
+	return e
 }

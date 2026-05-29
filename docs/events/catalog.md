@@ -47,14 +47,17 @@
 
 - The API writes outbox events for order creation and cancellation.
 - The PostgreSQL store can load pending outbox events and mark them published.
+- Outbox rows persist `causation_id`; API-originated root events use their own
+  `message_id`, and worker-emitted saga events use the source message ID.
 - `cmd/fulfillhub-outbox-relay` publishes pending events to RabbitMQ and injects
-  `traceparent` into AMQP headers.
+  `traceparent` plus `causation_id` into AMQP headers.
 - `cmd/fulfillhub-dlq-replay` requires PostgreSQL audit logging and records
   `dlq.replay` details for successful or failed replay attempts.
 - Inbox idempotency is implemented for memory tests and PostgreSQL-backed consumers.
 - RabbitMQ consumers extract `traceparent`, create consume spans, record inbox
-  entries before handlers run, ack duplicates, publish bounded retries for
-  handler failures, and nack exhausted failures to DLQs.
+  entries before handlers run, backfill causal metadata from AMQP headers when
+  needed, ack duplicates, publish bounded retries for handler failures, and
+  nack exhausted failures to DLQs.
 - RabbitMQ topology declaration creates each primary queue, retry queue, and
   dead-letter queue listed in the queue design table.
 - `cmd/fulfillhub-worker` consumes inventory, payment, shipment, and order
@@ -87,12 +90,8 @@
   "correlation_id": "cor_01hzy72wf4ekcg7fbc7r8rtn2r",
   "causation_id": "msg_01hzy7ztck3kc67mw4jv0v4f8g",
   "event_type": "payment.authorized",
-  "occurred_at": "2026-05-28T20:15:12Z",
-  "data": {
-    "order_id": "ord_01hzy72wf4ekcg7fbc7r8rtn2r",
-    "merchant_id": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
-    "authorization_id": "pay_01hzy7aqwbrk4k6q31z9r1rj6z",
-    "provider": "stripe"
-  }
+  "order_id": "ord_01hzy72wf4ekcg7fbc7r8rtn2r",
+  "merchant_id": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
+  "occurred_at": "2026-05-28T20:15:12Z"
 }
 ```

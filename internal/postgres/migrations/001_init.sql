@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 CREATE TABLE IF NOT EXISTS outbox_events (
   message_id TEXT PRIMARY KEY,
   correlation_id TEXT NOT NULL,
+  causation_id TEXT NOT NULL,
   event_type TEXT NOT NULL,
   order_id TEXT NOT NULL REFERENCES orders(order_id) ON DELETE CASCADE,
   merchant_id TEXT NOT NULL,

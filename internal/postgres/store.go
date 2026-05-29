@@ -591,7 +591,7 @@ func (s *Store) RecordCompensation(ctx context.Context, source commerce.OutboxEv
 
 func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 	rows, err := s.db.QueryContext(context.Background(), `
-		SELECT message_id, correlation_id, event_type, order_id, merchant_id, occurred_at
+		SELECT message_id, correlation_id, causation_id, event_type, order_id, merchant_id, occurred_at
 		FROM outbox_events
 		ORDER BY occurred_at ASC
 	`)
@@ -603,7 +603,7 @@ func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 	var events []commerce.OutboxEvent
 	for rows.Next() {
 		var event commerce.OutboxEvent
-		if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.EventType, &event.OrderID, &event.MerchantID, &event.OccurredAt); err != nil {
+		if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.CausationID, &event.EventType, &event.OrderID, &event.MerchantID, &event.OccurredAt); err != nil {
 			return nil
 		}
 		events = append(events, event)
@@ -680,7 +680,7 @@ func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) (events []co
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT message_id, correlation_id, event_type, order_id, merchant_id, occurred_at
+		SELECT message_id, correlation_id, causation_id, event_type, order_id, merchant_id, occurred_at
 		FROM outbox_events
 		WHERE published_at IS NULL
 		ORDER BY occurred_at ASC
@@ -693,7 +693,7 @@ func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) (events []co
 
 	for rows.Next() {
 		var event commerce.OutboxEvent
-		if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.EventType, &event.OrderID, &event.MerchantID, &event.OccurredAt); err != nil {
+		if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.CausationID, &event.EventType, &event.OrderID, &event.MerchantID, &event.OccurredAt); err != nil {
 			return nil, fmt.Errorf("scan pending outbox event: %w", err)
 		}
 		events = append(events, event)
@@ -929,15 +929,16 @@ func orderByIdempotency(ctx context.Context, tx *sql.Tx, merchantID, idempotency
 }
 
 func insertOutboxEvent(ctx context.Context, tx *sql.Tx, event commerce.OutboxEvent) error {
+	event = event.WithDefaultCausation()
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal outbox event: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO outbox_events (
-			message_id, correlation_id, event_type, order_id, merchant_id, payload, occurred_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, event.MessageID, event.CorrelationID, event.EventType, event.OrderID, event.MerchantID, payload, event.OccurredAt); err != nil {
+			message_id, correlation_id, causation_id, event_type, order_id, merchant_id, payload, occurred_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, event.MessageID, event.CorrelationID, event.CausationID, event.EventType, event.OrderID, event.MerchantID, payload, event.OccurredAt); err != nil {
 		return fmt.Errorf("insert outbox event: %w", err)
 	}
 	return nil

@@ -19,6 +19,7 @@ func TestConsumerRecordsInboxRunsHandlerAndAcks(t *testing.T) {
 	event := commerce.OutboxEvent{
 		MessageID:     "msg_1",
 		CorrelationID: "cor_1",
+		CausationID:   "msg_root",
 		EventType:     "order.created",
 		OrderID:       "ord_1",
 		MerchantID:    "mer_1",
@@ -32,6 +33,9 @@ func TestConsumerRecordsInboxRunsHandlerAndAcks(t *testing.T) {
 			handled++
 			if got.MessageID != event.MessageID {
 				t.Fatalf("message id = %q, want %q", got.MessageID, event.MessageID)
+			}
+			if got.CausationID != event.CausationID {
+				t.Fatalf("causation id = %q, want %q", got.CausationID, event.CausationID)
 			}
 			return nil
 		}),
@@ -57,6 +61,7 @@ func TestConsumerSkipsDuplicateInboxMessageAndAcks(t *testing.T) {
 	event := commerce.OutboxEvent{
 		MessageID:     "msg_1",
 		CorrelationID: "cor_1",
+		CausationID:   "msg_root",
 		EventType:     "order.created",
 	}
 	if recorded, err := inbox.Record(context.Background(), "inventory-worker", event); err != nil || !recorded {
@@ -121,6 +126,7 @@ func TestConsumerPublishesRetryAndAcksHandlerFailure(t *testing.T) {
 	event := commerce.OutboxEvent{
 		MessageID:     "msg_1",
 		CorrelationID: "cor_1",
+		CausationID:   "msg_root",
 		EventType:     "order.created",
 	}
 	consumer := Consumer{
@@ -145,6 +151,9 @@ func TestConsumerPublishesRetryAndAcksHandlerFailure(t *testing.T) {
 	}
 	if retry.event.MessageID != event.MessageID {
 		t.Fatalf("retry event message id = %q, want %q", retry.event.MessageID, event.MessageID)
+	}
+	if retry.event.CausationID != event.CausationID {
+		t.Fatalf("retry event causation id = %q, want %q", retry.event.CausationID, event.CausationID)
 	}
 	if ack.acked != 1 {
 		t.Fatalf("acked deliveries = %d, want 1", ack.acked)
@@ -328,12 +337,20 @@ func deliveryForTest(t testing.TB, ack *fakeAcknowledger, event commerce.OutboxE
 		Acknowledger:  ack,
 		DeliveryTag:   1,
 		Body:          body,
-		Headers:       amqp.Table{},
+		Headers:       deliveryHeadersForTest(event),
 		MessageId:     event.MessageID,
 		CorrelationId: event.CorrelationID,
 		Type:          event.EventType,
 		RoutingKey:    event.EventType,
 	}
+}
+
+func deliveryHeadersForTest(event commerce.OutboxEvent) amqp.Table {
+	headers := amqp.Table{}
+	if event.CausationID != "" {
+		headers["causation_id"] = event.CausationID
+	}
+	return headers
 }
 
 type fakeAcknowledger struct {

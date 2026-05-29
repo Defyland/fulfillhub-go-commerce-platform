@@ -16,8 +16,8 @@ import (
 func TestRelayPublishesAndMarksPendingEvents(t *testing.T) {
 	source := &fakeOutboxSource{
 		events: []commerce.OutboxEvent{
-			{MessageID: "msg_1", EventType: "order.created", CorrelationID: "cor_1"},
-			{MessageID: "msg_2", EventType: "payment.authorized", CorrelationID: "cor_1"},
+			{MessageID: "msg_1", EventType: "order.created", CorrelationID: "cor_1", CausationID: "msg_1"},
+			{MessageID: "msg_2", EventType: "payment.authorized", CorrelationID: "cor_1", CausationID: "msg_1"},
 		},
 	}
 	publisher := &fakePublisher{}
@@ -57,6 +57,7 @@ func TestRelayCreatesOutboxPublishSpans(t *testing.T) {
 				MessageID:     "msg_1",
 				EventType:     "order.created",
 				CorrelationID: "cor_1",
+				CausationID:   "msg_1",
 				OrderID:       "ord_1",
 				MerchantID:    "mer_1",
 			},
@@ -79,6 +80,7 @@ func TestRelayCreatesOutboxPublishSpans(t *testing.T) {
 	assertSpanAttr(t, publishSpan, "messaging.message.id", "msg_1")
 	assertSpanAttr(t, publishSpan, "fulfillhub.event_type", "order.created")
 	assertSpanAttr(t, publishSpan, "fulfillhub.correlation_id", "cor_1")
+	assertSpanAttr(t, publishSpan, "fulfillhub.causation_id", "msg_1")
 }
 
 func TestInjectTraceHeadersAddsTraceparent(t *testing.T) {
