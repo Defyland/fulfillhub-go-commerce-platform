@@ -236,6 +236,7 @@ The most important architecture decisions are recorded in:
 - [docs/adr/0002-rabbitmq-outbox-inbox.md](./docs/adr/0002-rabbitmq-outbox-inbox.md)
 - [docs/adr/0003-authentication-and-authorization.md](./docs/adr/0003-authentication-and-authorization.md)
 - [docs/adr/0004-local-otel-collector.md](./docs/adr/0004-local-otel-collector.md)
+- [docs/architecture/senior-technical-assessment.md](./docs/architecture/senior-technical-assessment.md)
 
 ## How to run locally
 

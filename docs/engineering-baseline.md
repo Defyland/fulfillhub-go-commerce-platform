@@ -15,6 +15,7 @@ expectations.
 - Contract-first HTTP API in `openapi.yaml`
 - API examples and error model in `docs/api/`
 - Architecture notes and data model in `docs/architecture/`
+- Senior technical assessment in `docs/architecture/senior-technical-assessment.md`
 - Architecture decision records in `docs/adr/`
 - Event topology in `docs/events/`
 - Threat model and authorization matrix in `docs/security/`

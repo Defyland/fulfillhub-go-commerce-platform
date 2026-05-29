@@ -100,6 +100,7 @@ docs/api/error-format.md
 docs/architecture/overview.md
 docs/architecture/domain-model.md
 docs/architecture/database-design.md
+docs/architecture/senior-technical-assessment.md
 docs/benchmarks/methodology.md
 docs/benchmarks/results-status.md
 docs/diagrams/system-context.md
