@@ -27,3 +27,7 @@ in-memory store because the local Docker daemon was unavailable. A
 compose-backed run is still required to measure PostgreSQL CPU and connection
 pool behavior, RabbitMQ queue depth and consumer lag, Redis limiter behavior,
 and API memory profile under container limits.
+
+The reproducible harness for that run is now versioned at
+[`scripts/run_compose_profile.sh`](../../scripts/run_compose_profile.sh), with
+usage notes in [compose-profiling.md](./compose-profiling.md).

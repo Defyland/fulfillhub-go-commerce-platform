@@ -10,6 +10,7 @@ cmd
 cmd/fulfillhub-api
 cmd/fulfillhub-dlq-replay
 cmd/fulfillhub-outbox-relay
+cmd/fulfillhub-worker
 deployments
 deployments/prometheus
 internal
@@ -53,6 +54,7 @@ go.sum
 cmd/fulfillhub-api/main.go
 cmd/fulfillhub-dlq-replay/main.go
 cmd/fulfillhub-outbox-relay/main.go
+cmd/fulfillhub-worker/main.go
 deployments/prometheus/prometheus.yml
 internal/api/server.go
 internal/api/server_test.go
@@ -60,6 +62,8 @@ internal/commerce/model.go
 internal/commerce/service.go
 internal/commerce/service_test.go
 internal/commerce/store.go
+internal/fulfillment/handlers.go
+internal/fulfillment/handlers_test.go
 internal/messaging/inbox.go
 internal/messaging/dlq.go
 internal/messaging/rabbitmq.go
@@ -71,6 +75,10 @@ internal/postgres/migrations.go
 internal/postgres/migrations_test.go
 internal/postgres/store.go
 internal/postgres/migrations/001_init.sql
+internal/postgres/migrations/002_audit_details.sql
+internal/postgres/migrations/003_fulfillment_projections.sql
+internal/postgres/migrations/004_notification_events.sql
+internal/postgres/migrations/005_compensation_events.sql
 internal/providers/payment.go
 internal/providers/providers_test.go
 internal/providers/shipment.go
@@ -96,6 +104,7 @@ benchmarks/k6/load.js
 benchmarks/k6/stress.js
 benchmarks/k6/spike.js
 benchmarks/results/README.md
+scripts/run_compose_profile.sh
 .github/workflows/phase0-quality.yml
 "
 

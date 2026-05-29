@@ -14,6 +14,7 @@ Raw k6 summary exports:
 - [2026-05-28 k6 stress summary](./2026-05-28-k6-stress-summary.json)
 - [2026-05-28 k6 spike summary](./2026-05-28-k6-spike-summary.json)
 
-The next compose-backed performance run should add PostgreSQL CPU, connection
-pool, RabbitMQ queue depth, consumer lag, Redis limiter, and API memory profile
-notes.
+The next compose-backed performance run should use
+[`../../scripts/run_compose_profile.sh`](../../scripts/run_compose_profile.sh)
+to add PostgreSQL CPU, connection pool, RabbitMQ queue depth, consumer lag,
+Redis limiter, and API memory profile notes.

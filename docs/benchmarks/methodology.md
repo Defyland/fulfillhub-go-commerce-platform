@@ -11,6 +11,9 @@ Benchmarking exists to measure whether FulfillHub can keep checkout orchestratio
 - PostgreSQL statistics views for lock and connection analysis
 - RabbitMQ management metrics for queue depth and consumer lag
 
+The Compose profiling harness is documented in
+[compose-profiling.md](./compose-profiling.md).
+
 ## Scenarios
 
 ### Smoke

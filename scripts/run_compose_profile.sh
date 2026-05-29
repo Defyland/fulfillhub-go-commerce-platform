@@ -1,0 +1,127 @@
+#!/usr/bin/env sh
+
+set -eu
+
+REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$REPO_ROOT"
+
+RESULT_ROOT=${RESULT_ROOT:-benchmarks/results}
+STAMP=${STAMP:-$(date -u +%Y-%m-%dT%H-%M-%SZ)}
+RESULT_DIR="$RESULT_ROOT/compose-$STAMP"
+BASE_URL=${BASE_URL:-http://localhost:8080}
+SCENARIOS=${SCENARIOS:-"smoke load stress spike"}
+KEEP_STACK=${KEEP_STACK:-0}
+
+mkdir -p "$RESULT_DIR"
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+capture() {
+  name=$1
+  shift
+  output="$RESULT_DIR/$name"
+  if "$@" >"$output" 2>&1; then
+    return 0
+  fi
+  status=$?
+  {
+    echo
+    echo "command failed with status $status"
+  } >>"$output"
+  return 0
+}
+
+capture_shell() {
+  name=$1
+  command=$2
+  output="$RESULT_DIR/$name"
+  if sh -c "$command" >"$output" 2>&1; then
+    return 0
+  fi
+  status=$?
+  {
+    echo
+    echo "command failed with status $status"
+  } >>"$output"
+  return 0
+}
+
+wait_for_api() {
+  deadline=$(($(date +%s) + 90))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    if curl -fsS "$BASE_URL/readyz" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "API did not become ready at $BASE_URL/readyz" >&2
+  exit 1
+}
+
+snapshot() {
+  label=$1
+  capture "compose-ps-$label.txt" docker compose ps
+  capture "docker-stats-$label.txt" docker stats --no-stream
+  capture "api-metrics-$label.prom" curl -fsS "$BASE_URL/metrics"
+  capture "rabbitmq-queues-$label.json" curl -fsS -u guest:guest http://localhost:15672/api/queues
+  capture "redis-memory-$label.txt" docker compose exec -T redis redis-cli INFO memory
+  capture "postgres-activity-$label.txt" docker compose exec -T postgres psql -U fulfillhub -d fulfillhub -c "SELECT datname, numbackends, xact_commit, xact_rollback, blks_read, blks_hit FROM pg_stat_database WHERE datname = 'fulfillhub';"
+}
+
+require_command docker
+require_command curl
+require_command k6
+
+if ! docker info >/dev/null 2>&1; then
+  echo "Docker daemon is not available; start Docker before running compose profiling." >&2
+  exit 1
+fi
+
+if [ "$KEEP_STACK" != "1" ]; then
+  trap 'docker compose down >/dev/null 2>&1 || true' EXIT INT TERM
+fi
+
+capture "docker-version.txt" docker version
+capture "compose-config.yml" docker compose config
+
+docker compose up -d --build
+wait_for_api
+
+snapshot "before"
+
+for scenario in $SCENARIOS; do
+  script="benchmarks/k6/$scenario.js"
+  if [ ! -f "$script" ]; then
+    echo "missing k6 scenario: $script" >&2
+    exit 1
+  fi
+  snapshot "before-$scenario"
+  summary="$RESULT_DIR/k6-$scenario-summary.json"
+  log="$RESULT_DIR/k6-$scenario.log"
+  if ! K6_SUMMARY_EXPORT="$summary" BASE_URL="$BASE_URL" k6 run "$script" >"$log" 2>&1; then
+    echo "k6 scenario failed: $scenario; see $log" >&2
+    exit 1
+  fi
+  snapshot "after-$scenario"
+done
+
+snapshot "after"
+
+cat >"$RESULT_DIR/README.md" <<EOF
+# Compose Profiling Run
+
+- Timestamp: $STAMP
+- Base URL: $BASE_URL
+- Scenarios: $SCENARIOS
+- Result directory: $RESULT_DIR
+
+Captured artifacts include Docker stats, API Prometheus metrics, RabbitMQ queue
+state, Redis memory info, PostgreSQL activity, k6 logs, and k6 summary exports.
+EOF
+
+echo "compose profiling artifacts written to $RESULT_DIR"

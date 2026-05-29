@@ -151,6 +151,7 @@ process.
 - Benchmark plan: [benchmarks/baseline.md](./benchmarks/baseline.md)
 - Methodology notes: [docs/benchmarks/methodology.md](./docs/benchmarks/methodology.md)
 - Current phase status: [docs/benchmarks/results-status.md](./docs/benchmarks/results-status.md)
+- Compose profiling harness: [docs/benchmarks/compose-profiling.md](./docs/benchmarks/compose-profiling.md)
 - Results folder: [benchmarks/results/README.md](./benchmarks/results/README.md)
 - First native result: [benchmarks/results/2026-05-28-native-http-benchmark.md](./benchmarks/results/2026-05-28-native-http-benchmark.md)
 - k6 smoke result: [benchmarks/results/2026-05-28-k6-smoke.md](./benchmarks/results/2026-05-28-k6-smoke.md)
