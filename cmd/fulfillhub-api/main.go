@@ -60,6 +60,9 @@ func main() {
 		OpsJWTIssuer:          os.Getenv("OPS_JWT_ISSUER"),
 		OpsJWTAudience:        os.Getenv("OPS_JWT_AUDIENCE"),
 	}
+	if outboxBacklog, ok := store.(api.OutboxBacklogProvider); ok {
+		options.OutboxBacklog = outboxBacklog
+	}
 	if rabbitURL := os.Getenv("RABBITMQ_URL"); rabbitURL != "" {
 		inspector, err := messaging.NewQueueInspector(rabbitURL, nil)
 		if err != nil {

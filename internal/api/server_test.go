@@ -143,6 +143,46 @@ func TestMetricsIncludesRabbitMQQueueGauges(t *testing.T) {
 	}
 }
 
+func TestMetricsIncludesOutboxBacklogGauge(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		OutboxBacklog: fakeOutboxBacklog{count: 3},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	for _, want := range []string{
+		"fulfillhub_outbox_metrics_up 1",
+		"fulfillhub_outbox_unpublished_total 3",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("metrics body missing %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestMetricsReportsOutboxMetricsDown(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		OutboxBacklog: fakeOutboxBacklog{err: errors.New("database unavailable")},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	body := rec.Body.String()
+	if !strings.Contains(body, "fulfillhub_outbox_metrics_up 0") {
+		t.Fatalf("metrics body does not report outbox metrics down:\n%s", body)
+	}
+	if strings.Contains(body, "fulfillhub_outbox_unpublished_total") {
+		t.Fatalf("metrics body must not expose stale outbox backlog after error:\n%s", body)
+	}
+}
+
 func TestMetricsReportsRabbitMQQueueMetricsDown(t *testing.T) {
 	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		QueueMetrics: fakeQueueMetrics{err: errors.New("rabbitmq unavailable")},
@@ -594,6 +634,15 @@ type fakeQueueMetrics struct {
 
 func (m fakeQueueMetrics) QueueDepths(context.Context) ([]messaging.QueueDepth, error) {
 	return m.depths, m.err
+}
+
+type fakeOutboxBacklog struct {
+	count int
+	err   error
+}
+
+func (m fakeOutboxBacklog) PendingOutboxCount(context.Context) (int, error) {
+	return m.count, m.err
 }
 
 func assertSpanAttribute(t testing.TB, span sdktrace.ReadOnlySpan, key, want string) {

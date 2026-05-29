@@ -174,6 +174,7 @@ FulfillHub’s operational baseline includes:
 - OpenTelemetry RabbitMQ consume spans with inbox idempotency and explicit acknowledgement outcomes
 - optional stdout trace export via `OTEL_TRACES_EXPORTER=stdout`
 - Prometheus-compatible request and error counters
+- Prometheus outbox backlog gauge for unpublished relay events
 - Prometheus RabbitMQ queue depth and consumer gauges when `RABBITMQ_URL` is configured
 - `/healthz` liveness and `/readyz` readiness endpoints
 - `/metrics` for the current executable slice

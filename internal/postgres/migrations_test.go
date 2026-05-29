@@ -342,6 +342,13 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if len(pending) == 0 {
 		t.Fatal("expected pending outbox event")
 	}
+	pendingCount, err := store.PendingOutboxCount(ctx)
+	if err != nil {
+		t.Fatalf("pending outbox count: %v", err)
+	}
+	if pendingCount == 0 {
+		t.Fatal("expected pending outbox count")
+	}
 	if err := store.MarkOutboxPublished(ctx, event.MessageID, now); err != nil {
 		t.Fatalf("mark outbox published: %v", err)
 	}
@@ -371,6 +378,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		"postgres.get_order",
 		"postgres.record_audit_log",
 		"postgres.pending_outbox_events",
+		"postgres.pending_outbox_count",
 		"postgres.mark_outbox_published",
 		"postgres.record_inbox_message",
 		"postgres.release_inbox_message",

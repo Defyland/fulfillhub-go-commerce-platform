@@ -573,6 +573,24 @@ func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) (events []co
 	return events, nil
 }
 
+func (s *Store) PendingOutboxCount(ctx context.Context) (count int, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.pending_outbox_count", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+	))
+	defer finishSpan(span, &err, "count pending outbox events")
+
+	if err := s.db.QueryRowContext(ctx, `
+		SELECT COUNT(*)
+		FROM outbox_events
+		WHERE published_at IS NULL
+	`).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count pending outbox events: %w", err)
+	}
+	span.SetAttributes(attribute.Int("fulfillhub.outbox.pending_count", count))
+	return count, nil
+}
+
 func (s *Store) MarkOutboxPublished(ctx context.Context, messageID string, publishedAt time.Time) (err error) {
 	ctx = contextOrBackground(ctx)
 	ctx, span := postgresTracer().Start(ctx, "postgres.mark_outbox_published", trace.WithAttributes(

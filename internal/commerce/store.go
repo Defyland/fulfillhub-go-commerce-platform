@@ -215,6 +215,19 @@ func (s *MemoryStore) PendingOutboxEvents(_ context.Context, limit int) ([]Outbo
 	return events, nil
 }
 
+func (s *MemoryStore) PendingOutboxCount(_ context.Context) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	count := 0
+	for _, event := range s.outbox {
+		if _, ok := s.publishedOutbox[event.MessageID]; !ok {
+			count++
+		}
+	}
+	return count, nil
+}
+
 func (s *MemoryStore) MarkOutboxPublished(_ context.Context, messageID string, publishedAt time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

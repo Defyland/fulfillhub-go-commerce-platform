@@ -24,22 +24,27 @@ import (
 )
 
 type Server struct {
-	service      *commerce.Service
-	apiKeys      map[string]string
-	counter      atomic.Uint64
-	metrics      metrics
-	limiter      RateLimiter
-	logger       *slog.Logger
-	tracer       trace.Tracer
-	propagator   propagation.TextMapPropagator
-	opsSecrets   [][]byte
-	opsIssuer    string
-	opsAudience  string
-	queueMetrics messaging.QueueMetricsProvider
+	service       *commerce.Service
+	apiKeys       map[string]string
+	counter       atomic.Uint64
+	metrics       metrics
+	limiter       RateLimiter
+	logger        *slog.Logger
+	tracer        trace.Tracer
+	propagator    propagation.TextMapPropagator
+	opsSecrets    [][]byte
+	opsIssuer     string
+	opsAudience   string
+	queueMetrics  messaging.QueueMetricsProvider
+	outboxMetrics OutboxBacklogProvider
 }
 
 type RateLimiter interface {
 	Allow(ctx context.Context, key string) (bool, error)
+}
+
+type OutboxBacklogProvider interface {
+	PendingOutboxCount(ctx context.Context) (int, error)
 }
 
 type Options struct {
@@ -52,6 +57,7 @@ type Options struct {
 	OpsJWTIssuer          string
 	OpsJWTAudience        string
 	QueueMetrics          messaging.QueueMetricsProvider
+	OutboxBacklog         OutboxBacklogProvider
 }
 
 type metrics struct {
@@ -139,14 +145,15 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 			"fh_live_merchant_demo": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
 			"fh_live_second_demo":   "mer_01hzy8v4egscg4r7kb3m7jq9qx",
 		},
-		limiter:      options.RateLimiter,
-		logger:       options.Logger,
-		tracer:       tracerProvider.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"),
-		propagator:   propagator,
-		opsSecrets:   opsJWTSecrets(options.OpsJWTSecret, options.OpsJWTPreviousSecrets),
-		opsIssuer:    strings.TrimSpace(options.OpsJWTIssuer),
-		opsAudience:  strings.TrimSpace(options.OpsJWTAudience),
-		queueMetrics: options.QueueMetrics,
+		limiter:       options.RateLimiter,
+		logger:        options.Logger,
+		tracer:        tracerProvider.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"),
+		propagator:    propagator,
+		opsSecrets:    opsJWTSecrets(options.OpsJWTSecret, options.OpsJWTPreviousSecrets),
+		opsIssuer:     strings.TrimSpace(options.OpsJWTIssuer),
+		opsAudience:   strings.TrimSpace(options.OpsJWTAudience),
+		queueMetrics:  options.QueueMetrics,
+		outboxMetrics: options.OutboxBacklog,
 	}
 }
 
@@ -570,6 +577,7 @@ func (s *Server) writeMetrics(ctx context.Context, w http.ResponseWriter) {
 	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_http_errors_total Total HTTP error responses returned.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_http_errors_total counter\n")
 	_, _ = fmt.Fprintf(w, "fulfillhub_http_errors_total %d\n", s.metrics.errors.Load())
+	s.writeOutboxMetrics(ctx, w)
 	if s.queueMetrics == nil {
 		return
 	}
@@ -592,6 +600,23 @@ func (s *Server) writeMetrics(ctx context.Context, w http.ResponseWriter) {
 	for _, depth := range depths {
 		_, _ = fmt.Fprintf(w, "fulfillhub_rabbitmq_queue_consumers{queue=\"%s\"} %d\n", prometheusLabelValue(depth.Queue), depth.Consumers)
 	}
+}
+
+func (s *Server) writeOutboxMetrics(ctx context.Context, w http.ResponseWriter) {
+	if s.outboxMetrics == nil {
+		return
+	}
+	count, err := s.outboxMetrics.PendingOutboxCount(ctx)
+	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_outbox_metrics_up Whether outbox metrics were collected successfully.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_outbox_metrics_up gauge\n")
+	if err != nil {
+		_, _ = fmt.Fprintf(w, "fulfillhub_outbox_metrics_up 0\n")
+		return
+	}
+	_, _ = fmt.Fprintf(w, "fulfillhub_outbox_metrics_up 1\n")
+	_, _ = fmt.Fprintf(w, "# HELP fulfillhub_outbox_unpublished_total Unpublished outbox events waiting for relay.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE fulfillhub_outbox_unpublished_total gauge\n")
+	_, _ = fmt.Fprintf(w, "fulfillhub_outbox_unpublished_total %d\n", count)
 }
 
 func prometheusLabelValue(value string) string {
