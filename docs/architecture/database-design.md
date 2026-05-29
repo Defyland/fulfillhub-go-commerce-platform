@@ -7,15 +7,15 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 | Table | Purpose | Key constraints |
 | --- | --- | --- |
 | `merchants` | Tenant registry and API credential metadata | Primary key `id` derived from API-key configuration |
-| `warehouses` | Physical inventory locations | Foreign key to `merchants.id` |
+| `warehouses` | Physical inventory locations | Foreign key to `merchants.id`, constrained operational status |
 | `inventory_items` | Current sellable and reserved stock per SKU and warehouse | Unique `(warehouse_id, sku)` |
-| `orders` | Order aggregate root and state machine | FK to `merchants.id`, unique `(merchant_id, external_order_id)` |
-| `order_items` | Immutable line items snapshot | Foreign key to `orders.id` |
-| `stock_reservations` | Reservation records used by inventory saga steps | Unique `(order_id, sku)`, FK to `warehouses.id` |
-| `payment_authorizations` | Provider attempts and results | Unique successful authorization per `order_id` |
-| `shipments` | Carrier handoff and tracking state | Unique `tracking_number` when present |
-| `notification_events` | Customer communication projection | Unique source message ID |
-| `compensation_events` | Failure handling projection | Unique source message ID |
+| `orders` | Order aggregate root and state machine | FK to `merchants.id`, unique `(merchant_id, external_order_id)`, constrained order and payment statuses |
+| `order_items` | Immutable line items snapshot | Foreign key to `orders.id`, constrained reservation status |
+| `stock_reservations` | Reservation records used by inventory saga steps | Unique `(order_id, sku)`, FK to `warehouses.id`, constrained reservation status |
+| `payment_authorizations` | Provider attempts and results | Unique successful authorization per `order_id`, constrained provider authorization status |
+| `shipments` | Carrier handoff and tracking state | Unique `tracking_number` when present, constrained shipment status |
+| `notification_events` | Customer communication projection | Unique source message ID, constrained delivery status |
+| `compensation_events` | Failure handling projection | Unique source message ID, constrained target order and compensation statuses |
 | `outbox_events` | Pending messages for broker publication | Persisted correlation and causation IDs |
 | `inbox_messages` | Per-consumer message deduplication | Unique `(consumer_name, message_id)` |
 | `audit_logs` | Operator and automated action trail with JSON details | Indexed by `merchant_id`, `order_id`, and `created_at` |

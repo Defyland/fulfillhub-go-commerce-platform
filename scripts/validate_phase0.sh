@@ -94,6 +94,7 @@ internal/postgres/migrations/009_stock_reservation_warehouse.sql
 internal/postgres/migrations/010_demo_inventory_seed.sql
 internal/postgres/migrations/011_order_status_check.sql
 internal/postgres/migrations/012_order_provider_references.sql
+internal/postgres/migrations/013_projection_status_checks.sql
 internal/providers/payment.go
 internal/providers/providers_test.go
 internal/providers/shipment.go

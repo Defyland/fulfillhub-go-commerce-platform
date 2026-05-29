@@ -220,6 +220,38 @@ func TestMigrationsAddOrderProviderReferences(t *testing.T) {
 	}
 }
 
+func TestMigrationsConstrainProjectionStatuses(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/013_projection_status_checks.sql")
+	if err != nil {
+		t.Fatalf("read projection status checks migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{
+		"chk_order_items_reservation_status",
+		"reservation_status IN ('pending', 'reserved', 'rejected', 'released')",
+		"chk_orders_payment_status",
+		"payment_status IS NULL OR payment_status IN",
+		"chk_stock_reservations_status",
+		"status IN ('reserved', 'released')",
+		"chk_payment_authorizations_status",
+		"status IN ('authorized', 'voided')",
+		"chk_shipments_status",
+		"status IN ('created', 'failed')",
+		"chk_notification_events_status",
+		"status IN ('queued', 'sent', 'failed')",
+		"chk_compensation_events_target_order_status",
+		"target_order_status IN",
+		"chk_compensation_events_status",
+		"status IN ('recorded', 'succeeded', 'failed')",
+		"chk_warehouses_status",
+		"status IN ('active', 'inactive', 'disabled')",
+	} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("projection status checks migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -462,22 +494,49 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record notification queued: %v", err)
 	}
+	compensationOrder := postgresTestOrder(
+		"ord_pg_compensate_"+strings.ReplaceAll(t.Name(), "/", "_"),
+		order.MerchantID,
+		"external_pg_compensate_"+strings.ReplaceAll(t.Name(), "/", "_"),
+		"SKU-LAMP-WHT",
+		now,
+	)
+	compensationCreatedEvent := commerce.OutboxEvent{
+		MessageID:     "msg_pg_compensate_created_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: "cor_pg_compensate",
+		CausationID:   "msg_pg_compensate_created_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		EventType:     "order.created",
+		OrderID:       compensationOrder.OrderID,
+		MerchantID:    compensationOrder.MerchantID,
+		OccurredAt:    now,
+	}
+	if _, _, err := store.InsertOrder(ctx, compensationOrder.MerchantID, "idem_pg_compensate_"+strings.ReplaceAll(t.Name(), "/", "_"), compensationOrder, compensationCreatedEvent, commerce.AuditLog{
+		MerchantID:    compensationOrder.MerchantID,
+		OrderID:       compensationOrder.OrderID,
+		ActorType:     "merchant",
+		ActorID:       compensationOrder.MerchantID,
+		Action:        "order.create",
+		CorrelationID: compensationCreatedEvent.CorrelationID,
+		CreatedAt:     now,
+	}); err != nil {
+		t.Fatalf("insert compensation order: %v", err)
+	}
 	compensationEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_compensation_" + strings.ReplaceAll(t.Name(), "/", "_"),
-		CorrelationID: event.CorrelationID,
-		CausationID:   completedEvent.MessageID,
+		CorrelationID: compensationCreatedEvent.CorrelationID,
+		CausationID:   compensationCreatedEvent.MessageID,
 		EventType:     "inventory.rejected",
-		OrderID:       order.OrderID,
-		MerchantID:    order.MerchantID,
+		OrderID:       compensationOrder.OrderID,
+		MerchantID:    compensationOrder.MerchantID,
 		OccurredAt:    now.Add(7 * time.Second),
 	}
 	if err := store.RecordCompensation(ctx, compensationEvent, commerce.StatusFailed, commerce.AuditLog{
-		MerchantID:    order.MerchantID,
-		OrderID:       order.OrderID,
+		MerchantID:    compensationOrder.MerchantID,
+		OrderID:       compensationOrder.OrderID,
 		ActorType:     "system",
 		ActorID:       "fulfillment-worker",
 		Action:        "compensation.inventory_rejected",
-		CorrelationID: event.CorrelationID,
+		CorrelationID: compensationCreatedEvent.CorrelationID,
 		CreatedAt:     compensationEvent.OccurredAt,
 		Details: map[string]string{
 			"source_message_id":   compensationEvent.MessageID,
@@ -487,7 +546,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record compensation: %v", err)
 	}
-	compensated, err := store.GetOrder(ctx, order.OrderID)
+	compensated, err := store.GetOrder(ctx, compensationOrder.OrderID)
 	if err != nil {
 		t.Fatalf("get compensated order: %v", err)
 	}
