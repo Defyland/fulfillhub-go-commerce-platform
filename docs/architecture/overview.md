@@ -52,7 +52,11 @@ Current status:
 
 - Every request creates a `request_id` and root trace span.
 - Every emitted message carries `correlation_id` and `causation_id`.
-- Queue consumers continue the trace and record handler latency and acknowledgement outcome.
+- API request logs are structured JSON and include status, latency, request ID,
+  correlation ID, actor type, and merchant ID when authenticated.
+- HTTP spans extract W3C `traceparent` headers and can be exported locally with
+  `OTEL_TRACES_EXPORTER=stdout`.
+- Future queue consumers continue the trace and record handler latency and acknowledgement outcome.
 - Dashboards highlight queue depth, saga completion rate, compensation rate, and readiness status.
 
 ## Deployment direction

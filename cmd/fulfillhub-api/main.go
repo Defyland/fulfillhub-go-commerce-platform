@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -11,9 +11,26 @@ import (
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/ratelimit"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func main() {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	shutdownTracing, err := configureTracing(logger)
+	if err != nil {
+		fatal(logger, "configure tracing", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(ctx); err != nil {
+			logger.Error("shutdown tracing", "error", err)
+		}
+	}()
+
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -25,26 +42,26 @@ func main() {
 		defer cancel()
 		postgresStore, err := postgres.Open(ctx, databaseURL)
 		if err != nil {
-			log.Fatal(err)
+			fatal(logger, "open postgres", err)
 		}
 		defer postgresStore.Close()
 		if err := postgres.RunMigrations(ctx, postgresStore.DB()); err != nil {
-			log.Fatal(err)
+			fatal(logger, "run postgres migrations", err)
 		}
 		store = postgresStore
 	}
 
-	options := api.Options{}
+	options := api.Options{Logger: logger}
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
 		client, err := ratelimit.NewRedisClient(redisURL)
 		if err != nil {
-			log.Fatal(err)
+			fatal(logger, "create redis client", err)
 		}
 		defer client.Close()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		if err := client.Ping(ctx).Err(); err != nil {
 			cancel()
-			log.Fatal(err)
+			fatal(logger, "ping redis", err)
 		}
 		cancel()
 		options.RateLimiter = ratelimit.NewRedisLimiter(client, 120, time.Minute)
@@ -53,8 +70,32 @@ func main() {
 	service := commerce.NewService(store)
 	server := api.NewServerWithOptions(service, options)
 
-	log.Printf("starting fulfillhub api on %s", addr)
+	logger.Info("starting fulfillhub api", "addr", addr)
 	if err := http.ListenAndServe(addr, server); err != nil {
-		log.Fatal(err)
+		fatal(logger, "api server stopped", err)
 	}
+}
+
+func configureTracing(logger *slog.Logger) (func(context.Context) error, error) {
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	if os.Getenv("OTEL_TRACES_EXPORTER") != "stdout" {
+		return func(context.Context) error { return nil }, nil
+	}
+	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	if err != nil {
+		return nil, err
+	}
+	provider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
+	otel.SetTracerProvider(provider)
+	logger.Info("otel tracing enabled", "exporter", "stdout")
+	return provider.Shutdown, nil
+}
+
+func fatal(logger *slog.Logger, message string, err error) {
+	if err != nil {
+		logger.Error(message, "error", err)
+	} else {
+		logger.Error(message)
+	}
+	os.Exit(1)
 }

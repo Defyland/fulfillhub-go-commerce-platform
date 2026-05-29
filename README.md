@@ -161,14 +161,18 @@ database, broker, cache, CPU, and memory telemetry enabled.
 
 FulfillHub’s operational baseline includes:
 
-- structured JSON logs for every request and async handler
-- `request_id`, `correlation_id`, `causation_id`, and `tenant_id` propagation
-- OpenTelemetry traces spanning HTTP handlers, SQL, and message publish/consume cycles
-- Prometheus counters, histograms, and queue lag gauges
+- structured JSON logs for every API request
+- `request_id`, `correlation_id`, actor type, and merchant metadata in request logs
+- OpenTelemetry HTTP spans with W3C `traceparent` propagation
+- optional stdout trace export via `OTEL_TRACES_EXPORTER=stdout`
+- Prometheus-compatible request and error counters
 - `/healthz` liveness and `/readyz` readiness endpoints
-- `/metrics` Prometheus-compatible request and error counters in the current executable slice
+- `/metrics` for the current executable slice
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
 - dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
+
+SQL spans, RabbitMQ publish/consume spans, and queue lag gauges are the next
+observability expansion after the HTTP runtime baseline.
 
 ## Security considerations
 
@@ -208,6 +212,12 @@ go run ./cmd/fulfillhub-api
 ```
 
 The API listens on `:8080` by default. Use `HTTP_ADDR=:9090` to choose another address.
+
+Enable local OpenTelemetry span output with:
+
+```sh
+OTEL_TRACES_EXPORTER=stdout go run ./cmd/fulfillhub-api
+```
 
 To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API applies embedded migrations and switches from the in-memory store to the PostgreSQL store.
 

@@ -5,20 +5,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type Server struct {
-	service *commerce.Service
-	apiKeys map[string]string
-	counter atomic.Uint64
-	metrics metrics
-	limiter RateLimiter
+	service    *commerce.Service
+	apiKeys    map[string]string
+	counter    atomic.Uint64
+	metrics    metrics
+	limiter    RateLimiter
+	logger     *slog.Logger
+	tracer     trace.Tracer
+	propagator propagation.TextMapPropagator
 }
 
 type RateLimiter interface {
@@ -26,7 +35,10 @@ type RateLimiter interface {
 }
 
 type Options struct {
-	RateLimiter RateLimiter
+	RateLimiter    RateLimiter
+	Logger         *slog.Logger
+	TracerProvider trace.TracerProvider
+	Propagator     propagation.TextMapPropagator
 }
 
 type metrics struct {
@@ -38,6 +50,13 @@ type actor struct {
 	MerchantID string
 	Ops        bool
 }
+
+type requestState struct {
+	ActorType  string
+	MerchantID string
+}
+
+type requestStateKey struct{}
 
 type responseMeta struct {
 	RequestID     string     `json:"request_id"`
@@ -80,23 +99,67 @@ func NewServer(service *commerce.Service) http.Handler {
 }
 
 func NewServerWithOptions(service *commerce.Service, options Options) http.Handler {
+	tracerProvider := options.TracerProvider
+	if tracerProvider == nil {
+		tracerProvider = otel.GetTracerProvider()
+	}
+	propagator := options.Propagator
+	if propagator == nil {
+		propagator = propagation.TraceContext{}
+	}
 	return &Server{
 		service: service,
 		apiKeys: map[string]string{
 			"fh_live_merchant_demo": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
 			"fh_live_second_demo":   "mer_01hzy8v4egscg4r7kb3m7jq9qx",
 		},
-		limiter: options.RateLimiter,
+		limiter:    options.RateLimiter,
+		logger:     options.Logger,
+		tracer:     tracerProvider.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"),
+		propagator: propagator,
 	}
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	startedAt := time.Now()
 	s.metrics.requests.Add(1)
 	requestID := headerOrNew(r.Header.Get("X-Request-Id"), "req", s.counter.Add(1))
 	correlationID := headerOrDefault(r.Header.Get("X-Correlation-Id"), requestID)
+	state := &requestState{}
+	ctx := s.propagator.Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+	ctx = context.WithValue(ctx, requestStateKey{}, state)
+	ctx, span := s.tracer.Start(ctx, routeSpanName(r))
+	r = r.WithContext(ctx)
+	rec := &statusRecorder{ResponseWriter: w}
 
+	w = rec
 	w.Header().Set("X-Request-Id", requestID)
 	w.Header().Set("X-Correlation-Id", correlationID)
+	defer func() {
+		status := rec.status
+		if status == 0 {
+			status = http.StatusOK
+		}
+		duration := time.Since(startedAt)
+		span.SetAttributes(
+			attribute.String("http.request.method", r.Method),
+			attribute.String("url.path", r.URL.Path),
+			attribute.Int("http.response.status_code", status),
+			attribute.String("fulfillhub.request_id", requestID),
+			attribute.String("fulfillhub.correlation_id", correlationID),
+		)
+		if state.ActorType != "" {
+			span.SetAttributes(attribute.String("fulfillhub.actor_type", state.ActorType))
+		}
+		if state.MerchantID != "" {
+			span.SetAttributes(attribute.String("fulfillhub.merchant_id", state.MerchantID))
+		}
+		if status >= http.StatusInternalServerError {
+			span.SetStatus(codes.Error, http.StatusText(status))
+		}
+		s.logRequest(r.Context(), r, status, rec.bytes, duration, requestID, correlationID)
+		span.End()
+	}()
 
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
@@ -133,6 +196,10 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request, requestID, 
 	if !ok {
 		return
 	}
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("fulfillhub.merchant_id", act.MerchantID),
+		attribute.String("fulfillhub.operation", "create_order"),
+	)
 	if !s.allowWrite(w, r, act.MerchantID, requestID, correlationID) {
 		return
 	}
@@ -153,6 +220,10 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request, requestID, 
 	if replayed {
 		w.Header().Set("X-Idempotent-Replay", "true")
 	}
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("fulfillhub.order_id", order.OrderID),
+		attribute.Bool("fulfillhub.idempotent_replay", replayed),
+	)
 	writeJSON(w, status, envelope{
 		Data: map[string]any{
 			"order_id":    order.OrderID,
@@ -199,6 +270,10 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request, orderID, reque
 	if !ok {
 		return
 	}
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("fulfillhub.order_id", orderID),
+		attribute.String("fulfillhub.operation", "get_order"),
+	)
 	order, err := s.service.GetOrder(orderID)
 	if err != nil {
 		s.handleCommerceError(w, err, requestID, correlationID)
@@ -219,6 +294,10 @@ func (s *Server) cancelOrder(w http.ResponseWriter, r *http.Request, orderID, re
 	if !ok {
 		return
 	}
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("fulfillhub.order_id", orderID),
+		attribute.String("fulfillhub.operation", "cancel_order"),
+	)
 	var cancelReq cancelOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&cancelReq); err != nil {
 		s.writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.", false, nil, requestID, correlationID)
@@ -264,7 +343,9 @@ func (s *Server) authenticateMerchant(w http.ResponseWriter, r *http.Request, re
 		s.writeError(w, http.StatusUnauthorized, "unauthorized", "Merchant API key is missing or invalid.", false, nil, requestID, correlationID)
 		return actor{}, false
 	}
-	return actor{MerchantID: merchantID}, true
+	act := actor{MerchantID: merchantID}
+	recordActor(r.Context(), act)
+	return act, true
 }
 
 func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, requestID, correlationID string) (actor, bool) {
@@ -274,10 +355,14 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, requestID,
 			s.writeError(w, http.StatusUnauthorized, "unauthorized", "Merchant API key is missing or invalid.", false, nil, requestID, correlationID)
 			return actor{}, false
 		}
-		return actor{MerchantID: merchantID}, true
+		act := actor{MerchantID: merchantID}
+		recordActor(r.Context(), act)
+		return act, true
 	}
 	if r.Header.Get("Authorization") == "Bearer ops-token" {
-		return actor{Ops: true}, true
+		act := actor{Ops: true}
+		recordActor(r.Context(), act)
+		return act, true
 	}
 	s.writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required.", false, nil, requestID, correlationID)
 	return actor{}, false
@@ -334,6 +419,66 @@ func (s *Server) writeMetrics(w http.ResponseWriter) {
 	_, _ = fmt.Fprintf(w, "fulfillhub_http_errors_total %d\n", s.metrics.errors.Load())
 }
 
+func (s *Server) logRequest(ctx context.Context, r *http.Request, status, bytes int, duration time.Duration, requestID, correlationID string) {
+	if s.logger == nil {
+		return
+	}
+	level := slog.LevelInfo
+	if status >= http.StatusInternalServerError {
+		level = slog.LevelError
+	} else if status >= http.StatusBadRequest {
+		level = slog.LevelWarn
+	}
+	attrs := []slog.Attr{
+		slog.String("method", r.Method),
+		slog.String("path", r.URL.Path),
+		slog.Int("status", status),
+		slog.Int("response_bytes", bytes),
+		slog.Float64("duration_ms", float64(duration.Microseconds())/1000),
+		slog.String("request_id", requestID),
+		slog.String("correlation_id", correlationID),
+	}
+	if state, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
+		if state.ActorType != "" {
+			attrs = append(attrs, slog.String("actor_type", state.ActorType))
+		}
+		if state.MerchantID != "" {
+			attrs = append(attrs, slog.String("merchant_id", state.MerchantID))
+		}
+	}
+	spanContext := trace.SpanContextFromContext(ctx)
+	if spanContext.HasTraceID() {
+		attrs = append(attrs, slog.String("trace_id", spanContext.TraceID().String()))
+	}
+	if spanContext.HasSpanID() {
+		attrs = append(attrs, slog.String("span_id", spanContext.SpanID().String()))
+	}
+	s.logger.LogAttrs(ctx, level, "http_request", attrs...)
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (r *statusRecorder) WriteHeader(status int) {
+	if r.status != 0 {
+		return
+	}
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *statusRecorder) Write(body []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(body)
+	r.bytes += n
+	return n, err
+}
+
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -352,4 +497,38 @@ func headerOrDefault(value, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func routeSpanName(r *http.Request) string {
+	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/healthz":
+		return "GET /healthz"
+	case r.Method == http.MethodGet && r.URL.Path == "/readyz":
+		return "GET /readyz"
+	case r.Method == http.MethodGet && r.URL.Path == "/metrics":
+		return "GET /metrics"
+	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
+		return "POST /api/v1/orders"
+	case strings.HasPrefix(r.URL.Path, "/api/v1/orders/") && strings.HasSuffix(r.URL.Path, "/cancel"):
+		return r.Method + " /api/v1/orders/{orderId}/cancel"
+	case strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
+		return r.Method + " /api/v1/orders/{orderId}"
+	case strings.HasPrefix(r.URL.Path, "/api/v1/shipments/"):
+		return r.Method + " /api/v1/shipments/{shipmentId}"
+	default:
+		return r.Method + " " + r.URL.Path
+	}
+}
+
+func recordActor(ctx context.Context, act actor) {
+	state, ok := ctx.Value(requestStateKey{}).(*requestState)
+	if !ok || state == nil {
+		return
+	}
+	if act.Ops {
+		state.ActorType = "ops"
+		return
+	}
+	state.ActorType = "merchant"
+	state.MerchantID = act.MerchantID
 }

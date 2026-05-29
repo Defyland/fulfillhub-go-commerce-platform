@@ -4,12 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestHealthAndReadiness(t *testing.T) {
@@ -25,6 +29,86 @@ func TestHealthAndReadiness(t *testing.T) {
 			t.Fatalf("%s status = %d, want 200", path, rec.Code)
 		}
 	}
+}
+
+func TestServerWritesStructuredRequestLog(t *testing.T) {
+	var logBuffer bytes.Buffer
+	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		Logger: logger,
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(validOrderJSON(t)))
+	req.Header.Set("X-API-Key", "fh_live_merchant_demo")
+	req.Header.Set("Idempotency-Key", "idem-key-0001")
+	req.Header.Set("X-Request-Id", "req_observability")
+	req.Header.Set("X-Correlation-Id", "cor_observability")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusAccepted)
+	var entry map[string]any
+	if err := json.Unmarshal(bytes.TrimSpace(logBuffer.Bytes()), &entry); err != nil {
+		t.Fatalf("decode structured log: %v\n%s", err, logBuffer.String())
+	}
+	for key, want := range map[string]any{
+		"msg":            "http_request",
+		"method":         http.MethodPost,
+		"path":           "/api/v1/orders",
+		"request_id":     "req_observability",
+		"correlation_id": "cor_observability",
+		"actor_type":     "merchant",
+		"merchant_id":    "mer_01hzy6v4egscg4r7kb3m7jq2dk",
+	} {
+		if got := entry[key]; got != want {
+			t.Fatalf("log %s = %v, want %v", key, got, want)
+		}
+	}
+	if got := entry["status"]; got != float64(http.StatusAccepted) {
+		t.Fatalf("log status = %v, want %d", got, http.StatusAccepted)
+	}
+	if _, ok := entry["duration_ms"].(float64); !ok {
+		t.Fatalf("log duration_ms missing or not numeric: %v", entry["duration_ms"])
+	}
+}
+
+func TestServerPropagatesTraceContext(t *testing.T) {
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	t.Cleanup(func() {
+		if err := provider.Shutdown(context.Background()); err != nil {
+			t.Fatalf("shutdown tracer provider: %v", err)
+		}
+	})
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		TracerProvider: provider,
+		Propagator:     propagation.TraceContext{},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	req.Header.Set("traceparent", "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01")
+	req.Header.Set("X-Request-Id", "req_trace")
+	req.Header.Set("X-Correlation-Id", "cor_trace")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	spans := recorder.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("ended spans = %d, want 1", len(spans))
+	}
+	span := spans[0]
+	if got := span.Name(); got != "GET /healthz" {
+		t.Fatalf("span name = %q, want GET /healthz", got)
+	}
+	if got := span.SpanContext().TraceID().String(); got != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Fatalf("trace id = %q, want propagated trace id", got)
+	}
+	if got := span.Parent().SpanID().String(); got != "00f067aa0ba902b7" {
+		t.Fatalf("parent span id = %q, want propagated parent span id", got)
+	}
+	assertSpanAttribute(t, span, "fulfillhub.request_id", "req_trace")
+	assertSpanAttribute(t, span, "fulfillhub.correlation_id", "cor_trace")
 }
 
 func TestCreateOrderRequiresAPIKey(t *testing.T) {
@@ -322,4 +406,17 @@ type fixedLimiter struct {
 
 func (l *fixedLimiter) Allow(context.Context, string) (bool, error) {
 	return l.allowed, l.err
+}
+
+func assertSpanAttribute(t testing.TB, span sdktrace.ReadOnlySpan, key, want string) {
+	t.Helper()
+	for _, attr := range span.Attributes() {
+		if string(attr.Key) == key {
+			if got := attr.Value.AsString(); got != want {
+				t.Fatalf("span attribute %s = %q, want %q", key, got, want)
+			}
+			return
+		}
+	}
+	t.Fatalf("span attribute %s not found", key)
 }
