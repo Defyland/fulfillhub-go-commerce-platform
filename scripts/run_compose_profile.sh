@@ -74,13 +74,13 @@ wait_for_async_drain() {
 	while [ "$(date +%s)" -lt "$deadline" ]; do
 		metrics=$(curl -fsS "$BASE_URL/metrics" 2>/dev/null || true)
 		outbox=$(printf '%s\n' "$metrics" | awk '$1 == "fulfillhub_outbox_unpublished_total" { print int($2); found = 1 } END { if (!found) print -1 }')
-		queue_state=$(docker compose exec -T rabbitmq rabbitmqctl -q list_queues name messages_ready messages_unacknowledged 2>/dev/null || true)
+		queue_state=$(curl -fsS --max-time 5 -u guest:guest "http://localhost:${RABBITMQ_MANAGEMENT_PORT}/api/queues" 2>/dev/null | python3 -c 'import json, sys; queues = json.load(sys.stdin); print(sum(q.get("messages_ready", 0) for q in queues), sum(q.get("messages_unacknowledged", 0) for q in queues))' 2>/dev/null || true)
 		if [ -z "$queue_state" ]; then
 			queued=-1
 			unacked=-1
 		else
-			queued=$(printf '%s\n' "$queue_state" | awk 'NF >= 3 { sum += $2 } END { print sum + 0 }')
-			unacked=$(printf '%s\n' "$queue_state" | awk 'NF >= 3 { sum += $3 } END { print sum + 0 }')
+			queued=$(printf '%s\n' "$queue_state" | awk 'NF >= 2 { print int($1); found = 1 } END { if (!found) print -1 }')
+			unacked=$(printf '%s\n' "$queue_state" | awk 'NF >= 2 { print int($2); found = 1 } END { if (!found) print -1 }')
 		fi
 		if [ "$outbox" -eq 0 ] && [ "$queued" -eq 0 ] && [ "$unacked" -eq 0 ]; then
 			return 0
@@ -105,6 +105,7 @@ snapshot() {
 require_command docker
 require_command curl
 require_command k6
+require_command python3
 
 if ! docker info >/dev/null 2>&1; then
   echo "Docker daemon is not available; start Docker before running compose profiling." >&2
