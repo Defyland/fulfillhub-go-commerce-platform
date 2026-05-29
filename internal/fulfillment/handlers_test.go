@@ -143,6 +143,46 @@ func TestInventoryHandlerWritesRejectionEventWhenReservationFails(t *testing.T) 
 	}
 }
 
+func TestInventoryHandlerWritesRejectionEventWhenStockIsInsufficient(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	ids := []string{"msg_inventory_attempt", "msg_inventory_rejected"}
+	now := time.Date(2026, 5, 29, 14, 45, 0, 0, time.UTC)
+	deps := Dependencies{
+		Projector: insufficientStockProjector{MemoryStore: store},
+		Clock:     func() time.Time { return now },
+		NewID: func(string) string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	}
+
+	inventory := handlerForTest(t, messaging.InventoryReserveQueue, deps)
+	if err := inventory.HandleEvent(context.Background(), service.OutboxEvents()[0]); err != nil {
+		t.Fatalf("inventory handler returned error: %v", err)
+	}
+
+	if got := eventTypes(service.OutboxEvents()); len(got) != 2 || got[1] != "inventory.rejected" {
+		t.Fatalf("outbox event types = %v, want inventory.rejected", got)
+	}
+	rejected, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if rejected.Items[0].ReservationStatus != "rejected" {
+		t.Fatalf("reservation status = %q, want rejected", rejected.Items[0].ReservationStatus)
+	}
+	last := service.AuditLogs()[len(service.AuditLogs())-1]
+	if last.Details["error"] != commerce.ErrInsufficientStock.Error() {
+		t.Fatalf("inventory rejection error detail = %q, want insufficient stock", last.Details["error"])
+	}
+}
+
 func TestPaymentHandlerWritesFailureEventWhenAuthorizationFails(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
@@ -511,6 +551,14 @@ func assertCausationChain(t testing.TB, events []commerce.OutboxEvent) {
 			t.Fatalf("event %s causation id = %q, want previous message id %q", events[idx].EventType, events[idx].CausationID, events[idx-1].MessageID)
 		}
 	}
+}
+
+type insufficientStockProjector struct {
+	*commerce.MemoryStore
+}
+
+func (p insufficientStockProjector) RecordInventoryReserved(context.Context, commerce.OutboxEvent, commerce.OutboxEvent, commerce.AuditLog) error {
+	return commerce.ErrInsufficientStock
 }
 
 func validCreateOrderRequest() commerce.CreateOrderRequest {

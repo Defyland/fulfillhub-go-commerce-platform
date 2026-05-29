@@ -66,7 +66,8 @@
   finalization, order cancellation, notification, and compensation queues.
 - Inventory, payment, and shipment workers persist their projections and write
   the next saga event through the transactional outbox instead of publishing
-  directly to RabbitMQ.
+  directly to RabbitMQ. Inventory reservation also locks and mutates the
+  matching `inventory_items` row.
 - Inventory worker reservation failures write `inventory.rejected` to the
   transactional outbox with audit details before compensation consumes the
   failure event.

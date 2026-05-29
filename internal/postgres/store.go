@@ -205,15 +205,20 @@ func (s *Store) RecordInventoryReserved(ctx context.Context, source commerce.Out
 		return err
 	}
 	for _, item := range items {
+		warehouseID, err := reserveInventoryItem(ctx, tx, source.MerchantID, source.OrderID, item, next.OccurredAt)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO stock_reservations (order_id, sku, quantity, status, reserved_at)
-			VALUES ($1, $2, $3, 'reserved', $4)
+			INSERT INTO stock_reservations (order_id, warehouse_id, sku, quantity, status, reserved_at)
+			VALUES ($1, $2, $3, $4, 'reserved', $5)
 			ON CONFLICT (order_id, sku) DO UPDATE
-			SET quantity = EXCLUDED.quantity,
+			SET warehouse_id = COALESCE(EXCLUDED.warehouse_id, stock_reservations.warehouse_id),
+				quantity = EXCLUDED.quantity,
 				status = EXCLUDED.status,
 				reserved_at = EXCLUDED.reserved_at,
 				released_at = NULL
-		`, source.OrderID, item.sku, item.quantity, next.OccurredAt); err != nil {
+		`, source.OrderID, nullableString(warehouseID), item.sku, item.quantity, next.OccurredAt); err != nil {
 			return fmt.Errorf("upsert stock reservation: %w", err)
 		}
 	}
@@ -598,6 +603,9 @@ func (s *Store) RecordCompensation(ctx context.Context, source commerce.OutboxEv
 func applyCompensationEffects(ctx context.Context, tx *sql.Tx, source commerce.OutboxEvent, at time.Time) error {
 	switch source.EventType {
 	case "payment.failed", "shipment.failed":
+		if err := releaseInventoryItems(ctx, tx, source.OrderID, at); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `
 			UPDATE stock_reservations
 			SET status = 'released',
@@ -852,6 +860,74 @@ type queryer interface {
 type reservationItem struct {
 	sku      string
 	quantity int
+}
+
+func reserveInventoryItem(ctx context.Context, tx *sql.Tx, merchantID, orderID string, item reservationItem, at time.Time) (string, error) {
+	var existingWarehouse sql.NullString
+	var existingQuantity int
+	var existingStatus string
+	if err := tx.QueryRowContext(ctx, `
+		SELECT warehouse_id, quantity, status
+		FROM stock_reservations
+		WHERE order_id = $1 AND sku = $2
+		FOR UPDATE
+	`, orderID, item.sku).Scan(&existingWarehouse, &existingQuantity, &existingStatus); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("lock existing stock reservation: %w", err)
+		}
+	} else if existingStatus == "reserved" {
+		if existingQuantity != item.quantity {
+			return "", fmt.Errorf("reservation quantity mismatch for sku %s", item.sku)
+		}
+		return existingWarehouse.String, nil
+	}
+
+	var warehouseID string
+	if err := tx.QueryRowContext(ctx, `
+		WITH candidate AS (
+			SELECT ii.id, ii.warehouse_id
+			FROM inventory_items ii
+			JOIN warehouses w ON w.id = ii.warehouse_id
+			WHERE w.merchant_id = $1
+				AND w.status = 'active'
+				AND ii.sku = $2
+				AND ii.available_quantity >= $3
+			ORDER BY ii.available_quantity DESC, ii.id ASC
+			FOR UPDATE OF ii
+			LIMIT 1
+		)
+		UPDATE inventory_items ii
+		SET available_quantity = ii.available_quantity - $3,
+			reserved_quantity = ii.reserved_quantity + $3,
+			updated_at = $4
+		FROM candidate
+		WHERE ii.id = candidate.id
+		RETURNING candidate.warehouse_id
+	`, merchantID, item.sku, item.quantity, at).Scan(&warehouseID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", fmt.Errorf("%w for sku %s", commerce.ErrInsufficientStock, item.sku)
+		}
+		return "", fmt.Errorf("reserve inventory item: %w", err)
+	}
+	return warehouseID, nil
+}
+
+func releaseInventoryItems(ctx context.Context, tx *sql.Tx, orderID string, at time.Time) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE inventory_items ii
+		SET available_quantity = ii.available_quantity + sr.quantity,
+			reserved_quantity = GREATEST(ii.reserved_quantity - sr.quantity, 0),
+			updated_at = $2
+		FROM stock_reservations sr
+		WHERE sr.order_id = $1
+			AND sr.status = 'reserved'
+			AND sr.warehouse_id IS NOT NULL
+			AND ii.warehouse_id = sr.warehouse_id
+			AND ii.sku = sr.sku
+	`, orderID, at); err != nil {
+		return fmt.Errorf("release inventory items: %w", err)
+	}
+	return nil
 }
 
 func orderItemsForReservation(ctx context.Context, q queryer, orderID string) ([]reservationItem, error) {

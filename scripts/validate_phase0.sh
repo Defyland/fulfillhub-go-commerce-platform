@@ -87,6 +87,8 @@ internal/postgres/migrations/005_compensation_events.sql
 internal/postgres/migrations/006_outbox_causation.sql
 internal/postgres/migrations/007_inventory_catalog.sql
 internal/postgres/migrations/008_orders_merchant_fk.sql
+internal/postgres/migrations/009_stock_reservation_warehouse.sql
+internal/postgres/migrations/010_demo_inventory_seed.sql
 internal/providers/payment.go
 internal/providers/providers_test.go
 internal/providers/shipment.go

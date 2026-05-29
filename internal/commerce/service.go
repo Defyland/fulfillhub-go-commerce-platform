@@ -13,6 +13,7 @@ var (
 	ErrDuplicateOrder         = errors.New("duplicate order")
 	ErrInvalidStateTransition = errors.New("invalid state transition")
 	ErrNotFound               = errors.New("not found")
+	ErrInsufficientStock      = errors.New("insufficient stock")
 )
 
 type FieldError struct {

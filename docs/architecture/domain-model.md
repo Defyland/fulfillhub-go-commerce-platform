@@ -9,7 +9,7 @@
 | `InventoryItem` | Current sellable stock for a SKU at a warehouse | `available_quantity + reserved_quantity` must stay consistent |
 | `Order` | Root aggregate that owns the orchestration state machine | External order ID must be unique per merchant |
 | `OrderItem` | Snapshot of requested SKU, quantity, and price | Immutable after order acceptance |
-| `StockReservation` | Holds inventory during payment and shipment coordination | Reservation state changes must be idempotent |
+| `StockReservation` | Holds inventory during payment and shipment coordination | Reservation state changes must be idempotent and tied to a warehouse |
 | `PaymentAuthorization` | Payment provider attempt and outcome | Only one active successful authorization per order |
 | `Shipment` | Carrier booking and timeline | Cannot exist before payment authorization in the happy path |
 | `OutboxEvent` | Durable event waiting for broker publication | Must be committed in the same transaction as domain state |
@@ -35,7 +35,7 @@ shipment_created -> cancellation_pending -> manual_review
 ## Bounded responsibilities
 
 - Orders own customer-visible status and the orchestration timeline.
-- Inventory owns stock truth and reservation semantics.
+- Inventory owns stock truth and reservation semantics. PostgreSQL reservations lock and mutate `inventory_items` in the same transaction that records the reservation event.
 - Payments own provider correlation and authorization status.
 - Shipments own carrier-facing identifiers and delivery timeline.
 - Notifications never own source-of-truth order state; they consume events only.

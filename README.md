@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, tenant foreign keys, inventory catalog tables, an outbox relay, RabbitMQ publisher and consumer topology, causal message metadata, workerized fulfillment happy path with durable inventory/payment/shipment/notification/cancellation/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, OpenTelemetry OTLP tracing through a local collector, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, tenant foreign keys, catalog-backed inventory reservations, an outbox relay, RabbitMQ publisher and consumer topology, causal message metadata, workerized fulfillment happy path with durable inventory/payment/shipment/notification/cancellation/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, OpenTelemetry OTLP tracing through a local collector, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
 
 ## What is this product?
 
@@ -103,7 +103,7 @@ The API surface is versioned under `/api/v1` and covers:
 FulfillHub treats asynchronous flow as a first-class concern. The current implementation records order outbox events, ships a relay process that publishes pending events to RabbitMQ, and provides a worker executable for the fulfillment happy path.
 
 - Order acceptance emits `order.created`
-- Inventory worker consumes reserve requests, records `stock_reservations`, and writes `inventory.reserved` to the outbox
+- Inventory worker consumes reserve requests, locks and decrements `inventory_items`, records `stock_reservations` with warehouse provenance, and writes `inventory.reserved` to the outbox
 - Inventory reservation failures are converted to `inventory.rejected` outbox
   events so compensation can fail the order through the same broker path
 - Payment worker consumes inventory reservations, records `payment_authorizations`, and writes `payment.authorized` to the outbox
@@ -130,7 +130,7 @@ The relational model centers on transactional consistency around orders and stoc
 - Order creation derives `merchant_id` from `X-API-Key`, not from request bodies
 - Idempotency keys protect duplicate order creation requests
 - Duplicate external order IDs are rejected per merchant
-- Embedded PostgreSQL migrations define orders, order items, idempotency keys, outbox events, inbox messages, and audit logs
+- Embedded PostgreSQL migrations define orders, order items, warehouses, inventory items, stock reservations with warehouse provenance, idempotency keys, outbox events, inbox messages, and audit logs
 
 The data model, indexes, and transaction boundaries are detailed in [docs/architecture/database-design.md](./docs/architecture/database-design.md).
 
@@ -150,6 +150,7 @@ The current implementation includes Go tests for:
 - payment authorization failure handling with durable `payment.failed` outbox events
 - shipment provider failure handling with durable `shipment.failed` outbox events
 - fulfillment worker happy-path progression through durable inventory, payment, shipment, and order completion projections
+- PostgreSQL inventory reservation tests that decrement `inventory_items`, persist the reservation warehouse, and restore available stock during compensation
 
 The performance layer includes compose-backed smoke, load, stress, and spike
 resource profiling for PostgreSQL, RabbitMQ, Redis, RabbitMQ queue drain, and
@@ -275,6 +276,10 @@ To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API a
 DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
   go run ./cmd/fulfillhub-api
 ```
+
+Migrations seed local demo inventory for the built-in demo API-key merchants so
+the Compose worker stack can exercise the happy path without a separate catalog
+admin API.
 
 To enable Redis-backed write rate limiting, provide `REDIS_URL`. The default
 limit is `120` writes per merchant per minute and can be changed with

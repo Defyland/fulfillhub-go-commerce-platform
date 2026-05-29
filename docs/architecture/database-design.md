@@ -6,12 +6,12 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 
 | Table | Purpose | Key constraints |
 | --- | --- | --- |
-| `merchants` | Tenant registry and API credential metadata | Unique merchant slug |
+| `merchants` | Tenant registry and API credential metadata | Primary key `id` derived from API-key configuration |
 | `warehouses` | Physical inventory locations | Foreign key to `merchants.id` |
 | `inventory_items` | Current sellable and reserved stock per SKU and warehouse | Unique `(warehouse_id, sku)` |
 | `orders` | Order aggregate root and state machine | FK to `merchants.id`, unique `(merchant_id, external_order_id)` |
 | `order_items` | Immutable line items snapshot | Foreign key to `orders.id` |
-| `stock_reservations` | Reservation records used by inventory saga steps | Unique `(order_id, sku)` |
+| `stock_reservations` | Reservation records used by inventory saga steps | Unique `(order_id, sku)`, FK to `warehouses.id` |
 | `payment_authorizations` | Provider attempts and results | Unique successful authorization per `order_id` |
 | `shipments` | Carrier handoff and tracking state | Unique `tracking_number` when present |
 | `notification_events` | Customer communication projection | Unique source message ID |
@@ -26,6 +26,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 - `orders(merchant_id, status, created_at desc)` for operations search
 - `inventory_items(warehouse_id, sku)` unique lookup path
 - `stock_reservations(order_id, status)` for reservation reconciliation
+- `stock_reservations(warehouse_id, sku)` for inventory release lookup
 - `outbox_events(published_at, occurred_at)` for relay polling
 - `outbox_events(correlation_id, causation_id)` for saga trace reconstruction
 - `inbox_messages(consumer_name, processed_at desc)` for replay diagnostics
@@ -78,16 +79,21 @@ The current worker happy path finalizes orders in one transaction:
 
 ### Inventory reservation
 
-The current worker records the order-level reservation projection in one transaction:
+The current worker records the order-level reservation projection and mutates
+catalog stock in one transaction:
 
-1. insert or update `stock_reservations`
-2. mark `order_items.reservation_status` as `reserved`
-3. insert `outbox_events` row for `inventory.reserved`
-4. insert `audit_logs` row for `inventory.reserved`
+1. lock an active warehouse `inventory_items` row with enough available stock
+2. decrement `inventory_items.available_quantity` and increment `reserved_quantity`
+3. insert or update `stock_reservations` with `warehouse_id`
+4. mark `order_items.reservation_status` as `reserved`
+5. insert `outbox_events` row for `inventory.reserved`
+6. insert `audit_logs` row for `inventory.reserved`
 
 ### Inventory rejection
 
-The current worker records reservation failure in one transaction:
+The current worker records reservation failure in one transaction. Missing or
+insufficient catalog stock is treated as a business rejection, not as a broker
+retry.
 
 1. mark order item reservation status as `rejected`
 2. insert `outbox_events` row for `inventory.rejected`
@@ -139,7 +145,7 @@ The current worker records customer email queueing in one transaction:
 The current worker records compensation projection state in one transaction:
 
 1. update `orders.status` to the target compensation status
-2. release reserved stock rows for `payment.failed` and `shipment.failed`
+2. release reserved stock rows and restore `inventory_items` quantities for `payment.failed` and `shipment.failed`
 3. void authorized payment rows for `shipment.failed`
 4. insert or update `compensation_events`
 5. insert `audit_logs` row for the compensation action

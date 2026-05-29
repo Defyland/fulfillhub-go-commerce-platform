@@ -20,7 +20,7 @@ sequenceDiagram
   Relay->>DB: poll unpublished outbox rows
   Relay->>MQ: publish order.created
   MQ->>Inventory: consume order.created
-  Inventory->>DB: persist stock_reservations + outbox event
+  Inventory->>DB: lock inventory_items, persist stock_reservations + outbox event
   Relay->>MQ: publish inventory.reserved
   MQ->>Payment: consume inventory.reserved
   Payment->>DB: persist payment_authorizations + outbox event

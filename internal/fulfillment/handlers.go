@@ -3,6 +3,7 @@ package fulfillment
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"time"
 
@@ -172,14 +173,24 @@ func reserveInventory(ctx context.Context, deps Dependencies, event commerce.Out
 	now := deps.Clock()
 	if deps.InventoryReserver != nil {
 		if err := deps.InventoryReserver.ReserveInventory(ctx, event); err != nil {
-			rejected := nextEventAt(deps, event, "inventory.rejected", now)
-			audit := systemAudit(event, "inventory.rejected", now)
-			audit.Details["error"] = err.Error()
-			return deps.Projector.RecordInventoryRejected(ctx, event, rejected, audit)
+			return recordInventoryRejected(ctx, deps, event, now, err)
 		}
 	}
 	next := nextEventAt(deps, event, "inventory.reserved", now)
-	return deps.Projector.RecordInventoryReserved(ctx, event, next, systemAudit(event, "inventory.reserved", now))
+	if err := deps.Projector.RecordInventoryReserved(ctx, event, next, systemAudit(event, "inventory.reserved", now)); err != nil {
+		if errors.Is(err, commerce.ErrInsufficientStock) {
+			return recordInventoryRejected(ctx, deps, event, now, err)
+		}
+		return err
+	}
+	return nil
+}
+
+func recordInventoryRejected(ctx context.Context, deps Dependencies, event commerce.OutboxEvent, now time.Time, cause error) error {
+	rejected := nextEventAt(deps, event, "inventory.rejected", now)
+	audit := systemAudit(event, "inventory.rejected", now)
+	audit.Details["error"] = cause.Error()
+	return deps.Projector.RecordInventoryRejected(ctx, event, rejected, audit)
 }
 
 func authorizePayment(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {

@@ -141,6 +141,42 @@ func TestMigrationsAddOrdersMerchantForeignKey(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddReservationWarehouseProvenance(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/009_stock_reservation_warehouse.sql")
+	if err != nil {
+		t.Fatalf("read reservation warehouse migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{
+		"ADD COLUMN IF NOT EXISTS warehouse_id",
+		"fk_stock_reservations_warehouse",
+		"REFERENCES warehouses(id)",
+		"idx_stock_reservations_warehouse_sku",
+	} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("reservation warehouse migration does not include %q", fragment)
+		}
+	}
+}
+
+func TestMigrationsSeedLocalDemoInventory(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/010_demo_inventory_seed.sql")
+	if err != nil {
+		t.Fatalf("read demo inventory seed migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{
+		"mer_01hzy6v4egscg4r7kb3m7jq2dk",
+		"mer_01hzy8v4egscg4r7kb3m7jq9qx",
+		"SKU-CHAIR-BLK",
+		"inventory_items",
+	} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("demo inventory seed migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -229,6 +265,10 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if merchantName != order.MerchantID {
 		t.Fatalf("merchant name = %q, want %q", merchantName, order.MerchantID)
 	}
+	seedInventory(t, ctx, store, order.MerchantID, "wh_pg_test_"+strings.ReplaceAll(t.Name(), "/", "_"), map[string]int{
+		"SKU-CHAIR-BLK": 5,
+		"SKU-LAMP-WHT":  2,
+	})
 
 	fetched, err := store.GetOrder(ctx, order.OrderID)
 	if err != nil {
@@ -259,6 +299,18 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		CreatedAt:     inventoryEvent.OccurredAt,
 	}); err != nil {
 		t.Fatalf("record inventory reserved: %v", err)
+	}
+	assertInventoryQuantities(t, ctx, store, order.MerchantID, "SKU-CHAIR-BLK", 4, 1)
+	var reservedWarehouseID string
+	if err := store.DB().QueryRowContext(ctx, `
+		SELECT warehouse_id
+		FROM stock_reservations
+		WHERE order_id = $1 AND sku = $2
+	`, order.OrderID, "SKU-CHAIR-BLK").Scan(&reservedWarehouseID); err != nil {
+		t.Fatalf("query reserved warehouse: %v", err)
+	}
+	if reservedWarehouseID == "" {
+		t.Fatal("stock reservation warehouse id must be present")
 	}
 	paymentEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_payment_" + strings.ReplaceAll(t.Name(), "/", "_"),
@@ -446,6 +498,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record void inventory reserved: %v", err)
 	}
+	assertInventoryQuantities(t, ctx, store, voidOrder.MerchantID, "SKU-LAMP-WHT", 1, 1)
 	voidPayment := commerce.OutboxEvent{
 		MessageID:     "msg_pg_void_payment_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: voidCreated.CorrelationID,
@@ -507,6 +560,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if voided.Items[0].ReservationStatus != "released" {
 		t.Fatalf("voided reservation status = %q, want released", voided.Items[0].ReservationStatus)
 	}
+	assertInventoryQuantities(t, ctx, store, voidOrder.MerchantID, "SKU-LAMP-WHT", 2, 0)
 	if voided.Payment == nil || voided.Payment.Status != "voided" {
 		t.Fatalf("voided payment = %+v, want voided", voided.Payment)
 	}
@@ -621,4 +675,50 @@ func hasSpan(spans []sdktrace.ReadOnlySpan, name string) bool {
 		}
 	}
 	return false
+}
+
+func seedInventory(t testing.TB, ctx context.Context, store *Store, merchantID, warehouseID string, quantities map[string]int) {
+	t.Helper()
+	if _, err := store.DB().ExecContext(ctx, `
+		INSERT INTO warehouses (id, merchant_id, code, name, status)
+		VALUES ($1, $2, 'test', 'Postgres Test Warehouse', 'active')
+		ON CONFLICT (id) DO UPDATE
+		SET merchant_id = EXCLUDED.merchant_id,
+			code = EXCLUDED.code,
+			name = EXCLUDED.name,
+			status = EXCLUDED.status,
+			updated_at = now()
+	`, warehouseID, merchantID); err != nil {
+		t.Fatalf("seed warehouse: %v", err)
+	}
+	for sku, quantity := range quantities {
+		if _, err := store.DB().ExecContext(ctx, `
+			INSERT INTO inventory_items (warehouse_id, sku, available_quantity, reserved_quantity)
+			VALUES ($1, $2, $3, 0)
+			ON CONFLICT (warehouse_id, sku) DO UPDATE
+			SET available_quantity = EXCLUDED.available_quantity,
+				reserved_quantity = EXCLUDED.reserved_quantity,
+				updated_at = now()
+		`, warehouseID, sku, quantity); err != nil {
+			t.Fatalf("seed inventory item %s: %v", sku, err)
+		}
+	}
+}
+
+func assertInventoryQuantities(t testing.TB, ctx context.Context, store *Store, merchantID, sku string, available, reserved int) {
+	t.Helper()
+	var gotAvailable, gotReserved int
+	if err := store.DB().QueryRowContext(ctx, `
+		SELECT ii.available_quantity, ii.reserved_quantity
+		FROM inventory_items ii
+		JOIN warehouses w ON w.id = ii.warehouse_id
+		WHERE w.merchant_id = $1 AND ii.sku = $2
+		ORDER BY ii.id ASC
+		LIMIT 1
+	`, merchantID, sku).Scan(&gotAvailable, &gotReserved); err != nil {
+		t.Fatalf("query inventory item %s: %v", sku, err)
+	}
+	if gotAvailable != available || gotReserved != reserved {
+		t.Fatalf("inventory %s = available %d reserved %d, want available %d reserved %d", sku, gotAvailable, gotReserved, available, reserved)
+	}
 }
