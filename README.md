@@ -62,7 +62,7 @@ More detail lives in [docs/architecture/overview.md](./docs/architecture/overvie
 | Cache and controls | Redis | Fast rate-limiting counters and idempotency support |
 | Observability | OpenTelemetry Collector, Prometheus, Grafana | Standard metrics, traces, dashboards, and correlation across sync and async flows |
 | Load testing | k6 | Repeatable smoke, load, stress, and spike scenarios |
-| CI | GitHub Actions | Portable repository validation and later Go quality gates |
+| CI | GitHub Actions | Portable repository validation, Go quality gates, and coverage artifacts |
 
 ## Domain model
 

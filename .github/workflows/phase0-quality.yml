@@ -34,7 +34,16 @@ jobs:
       - name: Unit and request tests
         run: go test ./...
       - name: Coverage
-        run: go test -cover ./...
+        run: |
+          go test -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tee coverage.txt
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: go-coverage
+          path: |
+            coverage.out
+            coverage.txt
       - name: Race detector
         run: go test -race ./...
       - name: Native benchmark smoke
