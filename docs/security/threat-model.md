@@ -32,11 +32,12 @@
   audit logs are written with actor and correlation metadata.
 - DLQ replay requires `DATABASE_URL` and `OPS_ACTOR_ID`, then records durable
   `dlq.replay` audit details for success and failure attempts.
-- Operations JWTs are validated with HS256, expiry, subject, and `operations` or `ops` role claims.
+- Operations JWTs are validated with HS256, expiry, subject, `operations` or
+  `ops` role claims, optional issuer/audience checks, and previous secrets
+  during key rotation.
 - CI runs Go tests, race detection, OpenAPI linting, markdown linting, Docker build validation, and gitleaks.
 
 ## Known Gaps
 
-- Production deployments still need issuer, audience, and key-rotation policy for operations JWTs.
 - `/metrics` is unauthenticated in the local slice and should be network-restricted in production.
 - Compose-backed performance runs still need CPU, memory, and Redis limiter telemetry.

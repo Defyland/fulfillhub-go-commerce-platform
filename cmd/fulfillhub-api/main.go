@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"
@@ -53,8 +54,11 @@ func main() {
 	}
 
 	options := api.Options{
-		Logger:       logger,
-		OpsJWTSecret: os.Getenv("OPS_JWT_SECRET"),
+		Logger:                logger,
+		OpsJWTSecret:          os.Getenv("OPS_JWT_SECRET"),
+		OpsJWTPreviousSecrets: splitCSV(os.Getenv("OPS_JWT_PREVIOUS_SECRETS")),
+		OpsJWTIssuer:          os.Getenv("OPS_JWT_ISSUER"),
+		OpsJWTAudience:        os.Getenv("OPS_JWT_AUDIENCE"),
 	}
 	if rabbitURL := os.Getenv("RABBITMQ_URL"); rabbitURL != "" {
 		inspector, err := messaging.NewQueueInspector(rabbitURL, nil)
@@ -112,4 +116,16 @@ func fatal(logger *slog.Logger, message string, err error) {
 		logger.Error(message)
 	}
 	os.Exit(1)
+}
+
+func splitCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			values = append(values, part)
+		}
+	}
+	return values
 }

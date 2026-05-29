@@ -32,7 +32,9 @@ type Server struct {
 	logger       *slog.Logger
 	tracer       trace.Tracer
 	propagator   propagation.TextMapPropagator
-	opsSecret    []byte
+	opsSecrets   [][]byte
+	opsIssuer    string
+	opsAudience  string
 	queueMetrics messaging.QueueMetricsProvider
 }
 
@@ -41,12 +43,15 @@ type RateLimiter interface {
 }
 
 type Options struct {
-	RateLimiter    RateLimiter
-	Logger         *slog.Logger
-	TracerProvider trace.TracerProvider
-	Propagator     propagation.TextMapPropagator
-	OpsJWTSecret   string
-	QueueMetrics   messaging.QueueMetricsProvider
+	RateLimiter           RateLimiter
+	Logger                *slog.Logger
+	TracerProvider        trace.TracerProvider
+	Propagator            propagation.TextMapPropagator
+	OpsJWTSecret          string
+	OpsJWTPreviousSecrets []string
+	OpsJWTIssuer          string
+	OpsJWTAudience        string
+	QueueMetrics          messaging.QueueMetricsProvider
 }
 
 type metrics struct {
@@ -67,11 +72,15 @@ type requestState struct {
 }
 
 type opsJWTClaims struct {
-	Subject   string   `json:"sub"`
-	ExpiresAt int64    `json:"exp"`
-	Role      string   `json:"role"`
-	Roles     []string `json:"roles"`
+	Subject   string      `json:"sub"`
+	Issuer    string      `json:"iss"`
+	Audience  jwtAudience `json:"aud"`
+	ExpiresAt int64       `json:"exp"`
+	Role      string      `json:"role"`
+	Roles     []string    `json:"roles"`
 }
+
+type jwtAudience []string
 
 type requestStateKey struct{}
 
@@ -134,7 +143,9 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 		logger:       options.Logger,
 		tracer:       tracerProvider.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"),
 		propagator:   propagator,
-		opsSecret:    []byte(options.OpsJWTSecret),
+		opsSecrets:   opsJWTSecrets(options.OpsJWTSecret, options.OpsJWTPreviousSecrets),
+		opsIssuer:    strings.TrimSpace(options.OpsJWTIssuer),
+		opsAudience:  strings.TrimSpace(options.OpsJWTAudience),
 		queueMetrics: options.QueueMetrics,
 	}
 }
@@ -386,12 +397,12 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, requestID,
 		return act, true
 	}
 	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
-		if len(s.opsSecret) == 0 && token == "ops-token" {
+		if len(s.opsSecrets) == 0 && token == "ops-token" {
 			act := actor{Ops: true, ActorID: "local-ops"}
 			recordActor(r.Context(), act)
 			return act, true
 		}
-		if subject, ok := validateOpsJWT(token, s.opsSecret, time.Now().UTC()); ok {
+		if subject, ok := validateOpsJWT(token, s.opsSecrets, s.opsIssuer, s.opsAudience, time.Now().UTC()); ok {
 			act := actor{Ops: true, ActorID: subject}
 			recordActor(r.Context(), act)
 			return act, true
@@ -411,8 +422,8 @@ func bearerToken(header string) string {
 	return strings.TrimSpace(token)
 }
 
-func validateOpsJWT(token string, secret []byte, now time.Time) (string, bool) {
-	if len(secret) == 0 {
+func validateOpsJWT(token string, secrets [][]byte, issuer, audience string, now time.Time) (string, bool) {
+	if len(secrets) == 0 {
 		return "", false
 	}
 	parts := strings.Split(token, ".")
@@ -424,18 +435,45 @@ func validateOpsJWT(token string, secret []byte, now time.Time) (string, bool) {
 		return "", false
 	}
 	signingInput := parts[0] + "." + parts[1]
-	mac := hmac.New(sha256.New, secret)
-	_, _ = mac.Write([]byte(signingInput))
-	want := mac.Sum(nil)
 	got, err := base64.RawURLEncoding.DecodeString(parts[2])
-	if err != nil || !hmac.Equal(got, want) {
+	if err != nil || !matchesAnyOpsJWTSecret(signingInput, got, secrets) {
 		return "", false
 	}
 	claims, err := decodeJWTPart[opsJWTClaims](parts[1])
 	if err != nil || strings.TrimSpace(claims.Subject) == "" || claims.ExpiresAt <= now.Unix() || !claims.hasOperationsRole() {
 		return "", false
 	}
+	if issuer != "" && claims.Issuer != issuer {
+		return "", false
+	}
+	if audience != "" && !claims.Audience.Contains(audience) {
+		return "", false
+	}
 	return claims.Subject, true
+}
+
+func matchesAnyOpsJWTSecret(signingInput string, got []byte, secrets [][]byte) bool {
+	for _, secret := range secrets {
+		mac := hmac.New(sha256.New, secret)
+		_, _ = mac.Write([]byte(signingInput))
+		if hmac.Equal(got, mac.Sum(nil)) {
+			return true
+		}
+	}
+	return false
+}
+
+func opsJWTSecrets(current string, previous []string) [][]byte {
+	values := append([]string{current}, previous...)
+	secrets := make([][]byte, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		secrets = append(secrets, []byte(value))
+	}
+	return secrets
 }
 
 func decodeJWTPart[T any](part string) (T, error) {
@@ -448,6 +486,29 @@ func decodeJWTPart[T any](part string) (T, error) {
 		return value, err
 	}
 	return value, nil
+}
+
+func (a *jwtAudience) UnmarshalJSON(raw []byte) error {
+	var single string
+	if err := json.Unmarshal(raw, &single); err == nil {
+		*a = jwtAudience{single}
+		return nil
+	}
+	var many []string
+	if err := json.Unmarshal(raw, &many); err != nil {
+		return err
+	}
+	*a = many
+	return nil
+}
+
+func (a jwtAudience) Contains(want string) bool {
+	for _, got := range a {
+		if got == want {
+			return true
+		}
+	}
+	return false
 }
 
 func (c opsJWTClaims) hasOperationsRole() bool {

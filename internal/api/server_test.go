@@ -306,6 +306,78 @@ func TestOpsJWTCanReadMerchantOrder(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 }
 
+func TestOpsJWTValidatesIssuerAndAudience(t *testing.T) {
+	const secret = "ops-jwt-secret"
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		OpsJWTSecret:   secret,
+		OpsJWTIssuer:   "https://ops.fulfillhub.local",
+		OpsJWTAudience: "fulfillhub-ops",
+	})
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	token := signOpsJWT(t, secret, map[string]any{
+		"sub":   "usr_ops_1",
+		"iss":   "https://ops.fulfillhub.local",
+		"aud":   []string{"fulfillhub-ops"},
+		"roles": []string{"operations"},
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+orderID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+}
+
+func TestOpsJWTRejectsWrongIssuerOrAudience(t *testing.T) {
+	const secret = "ops-jwt-secret"
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		OpsJWTSecret:   secret,
+		OpsJWTIssuer:   "https://ops.fulfillhub.local",
+		OpsJWTAudience: "fulfillhub-ops",
+	})
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	token := signOpsJWT(t, secret, map[string]any{
+		"sub":   "usr_ops_1",
+		"iss":   "https://issuer.example.invalid",
+		"aud":   "fulfillhub-ops",
+		"roles": []string{"operations"},
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+orderID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusUnauthorized)
+}
+
+func TestOpsJWTAcceptsPreviousSecretDuringRotation(t *testing.T) {
+	const oldSecret = "old-ops-jwt-secret"
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		OpsJWTSecret:          "new-ops-jwt-secret",
+		OpsJWTPreviousSecrets: []string{oldSecret},
+	})
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	token := signOpsJWT(t, oldSecret, map[string]any{
+		"sub":   "usr_ops_1",
+		"roles": []string{"operations"},
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+orderID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+}
+
 func TestOpsJWTRejectsMissingOperationsRole(t *testing.T) {
 	const secret = "ops-jwt-secret"
 	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{

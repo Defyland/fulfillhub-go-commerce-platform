@@ -183,7 +183,7 @@ after the HTTP, SQL, RabbitMQ, publish-path, and consume-path runtime baseline.
 ## Security considerations
 
 - Merchant-facing APIs authenticate through scoped API keys and derive `merchant_id` from the key
-- Operations-only capabilities use JWT bearer tokens with role claims when `OPS_JWT_SECRET` is configured
+- Operations-only capabilities use JWT bearer tokens with role, expiry, issuer, audience, and rotation controls when configured
 - The local slice accepts `Bearer ops-token` only when `OPS_JWT_SECRET` is not set
 - Tenant isolation is enforced on every read and write path via `merchant_id`
 - Input validation rejects malformed SKU, quantity, address, and idempotency payloads
@@ -233,7 +233,11 @@ OTEL_TRACES_EXPORTER=stdout go run ./cmd/fulfillhub-api
 Require signed operations JWTs with:
 
 ```sh
-OPS_JWT_SECRET='local-development-secret' go run ./cmd/fulfillhub-api
+OPS_JWT_SECRET='local-development-secret' \
+OPS_JWT_PREVIOUS_SECRETS='previous-secret-for-rotation' \
+OPS_JWT_ISSUER='https://ops.fulfillhub.local' \
+OPS_JWT_AUDIENCE='fulfillhub-ops' \
+  go run ./cmd/fulfillhub-api
 ```
 
 To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API applies embedded migrations and switches from the in-memory store to the PostgreSQL store.

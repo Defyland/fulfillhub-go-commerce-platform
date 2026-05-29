@@ -58,7 +58,6 @@ The current executable slice includes:
 
 It intentionally does not include yet:
 
-- issuer, audience, and key-rotation policy for operations JWTs
 - durable inventory, payment, shipment, notification, and compensation projections
 - compose-backed CPU, memory, and Redis limiter profiling
 
