@@ -398,8 +398,9 @@ func (s *Server) cancelOrder(w http.ResponseWriter, r *http.Request, orderID, re
 	}
 
 	order, err = s.service.CancelOrderContext(r.Context(), orderID, correlationID, commerce.AuditActor{
-		Type: cancelReq.RequestedBy.Type,
-		ID:   cancelReq.RequestedBy.ID,
+		Type:   cancelReq.RequestedBy.Type,
+		ID:     cancelReq.RequestedBy.ID,
+		Reason: cancelReq.Reason,
 	})
 	if err != nil {
 		s.handleCommerceError(w, err, requestID, correlationID)

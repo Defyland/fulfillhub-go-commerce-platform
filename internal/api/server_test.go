@@ -559,7 +559,7 @@ func TestStaticOpsTokenDisabledWhenJWTSecretConfigured(t *testing.T) {
 }
 
 func TestCancelOrderAcceptsValidRequest(t *testing.T) {
-	server := testServer()
+	server, _, service := testServerWithStore()
 	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
 
 	rec := httptest.NewRecorder()
@@ -577,6 +577,11 @@ func TestCancelOrderAcceptsValidRequest(t *testing.T) {
 	assertStatus(t, rec, http.StatusAccepted)
 	if !strings.Contains(rec.Body.String(), "cancellation_pending") {
 		t.Fatalf("response body does not include cancellation status: %s", rec.Body.String())
+	}
+	logs := service.AuditLogs()
+	cancelLog := logs[len(logs)-1]
+	if cancelLog.Action != "order.cancel_requested" || cancelLog.Details["reason"] != "customer_requested" {
+		t.Fatalf("cancel audit log = %+v, want reason customer_requested", cancelLog)
 	}
 }
 

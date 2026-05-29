@@ -17,8 +17,9 @@ type Store interface {
 }
 
 type AuditActor struct {
-	Type string
-	ID   string
+	Type   string
+	ID     string
+	Reason string
 }
 
 type AuditLog struct {

@@ -51,7 +51,7 @@ One transaction must:
 
 1. update `orders.status` and optimistic `version`
 2. insert `outbox_events` row for `order.cancel_requested`
-3. insert `audit_logs` row for `order.cancel_requested`
+3. insert `audit_logs` row for `order.cancel_requested` with the cancellation reason
 
 ### Order cancellation finalization
 

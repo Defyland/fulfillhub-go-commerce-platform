@@ -619,6 +619,32 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if !foundReplayAudit {
 		t.Fatalf("audit logs = %+v, want replay details", auditLogs)
 	}
+	cancelAudit := commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "merchant_user",
+		ActorID:       "usr_cancel_pg_test",
+		Action:        "order.cancel_requested",
+		CorrelationID: "cor_cancel_pg_test",
+		CreatedAt:     now.Add(2 * time.Second),
+		Details: map[string]string{
+			"reason": "customer_requested",
+		},
+	}
+	if err := store.RecordAuditLog(ctx, cancelAudit); err != nil {
+		t.Fatalf("record cancellation audit log: %v", err)
+	}
+	auditLogs = store.AuditLogs()
+	foundCancelReasonAudit := false
+	for _, auditLog := range auditLogs {
+		if auditLog.Action == "order.cancel_requested" && auditLog.Details["reason"] == "customer_requested" {
+			foundCancelReasonAudit = true
+			break
+		}
+	}
+	if !foundCancelReasonAudit {
+		t.Fatalf("audit logs = %+v, want cancellation reason details", auditLogs)
+	}
 	pending, err := store.PendingOutboxEvents(ctx, 10)
 	if err != nil {
 		t.Fatalf("pending outbox events: %v", err)

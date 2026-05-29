@@ -79,8 +79,9 @@ func TestCancelOrderWritesAuditLog(t *testing.T) {
 	}
 
 	cancelled, err := service.CancelOrder(order.OrderID, "cor_cancel", AuditActor{
-		Type: "merchant_user",
-		ID:   "usr_93842",
+		Type:   "merchant_user",
+		ID:     "usr_93842",
+		Reason: "customer_requested",
 	})
 	if err != nil {
 		t.Fatalf("CancelOrder returned error: %v", err)
@@ -101,6 +102,9 @@ func TestCancelOrderWritesAuditLog(t *testing.T) {
 	}
 	if cancelLog.CorrelationID != "cor_cancel" {
 		t.Fatalf("cancel audit correlation = %q, want cor_cancel", cancelLog.CorrelationID)
+	}
+	if cancelLog.Details["reason"] != "customer_requested" {
+		t.Fatalf("cancel audit reason = %q, want customer_requested", cancelLog.Details["reason"])
 	}
 	events := service.OutboxEvents()
 	if events[1].CausationID != events[1].MessageID {

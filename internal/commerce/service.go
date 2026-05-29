@@ -159,6 +159,9 @@ func (s *Service) CancelOrderContext(ctx context.Context, orderID, correlationID
 		Action:        "order.cancel_requested",
 		CorrelationID: correlationID,
 		CreatedAt:     now,
+		Details: map[string]string{
+			"reason": strings.TrimSpace(actor.Reason),
+		},
 	}
 
 	return s.store.UpdateOrderStatus(ctx, orderID, StatusCancellationPending, now, event, audit)

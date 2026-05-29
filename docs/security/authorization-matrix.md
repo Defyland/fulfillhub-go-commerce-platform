@@ -18,7 +18,7 @@
 | Flow | Actor source | Audit action |
 | --- | --- | --- |
 | Create order | `merchant_id` derived from `X-API-Key` | `order.create` |
-| Cancel order | `requested_by.type` and `requested_by.id` from request body | `order.cancel_requested` |
+| Cancel order | `requested_by.type`, `requested_by.id`, and `reason` from request body | `order.cancel_requested` |
 | DLQ replay | `OPS_ACTOR_ID` environment variable | `dlq.replay` |
 
 ## Enforcement Notes
