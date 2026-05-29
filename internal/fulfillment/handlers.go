@@ -19,6 +19,7 @@ type Projector interface {
 	RecordPaymentAuthorized(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, payment commerce.Payment, audit commerce.AuditLog) error
 	RecordPaymentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) error
+	RecordShipmentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordNotificationQueued(ctx context.Context, source commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordCompensation(ctx context.Context, source commerce.OutboxEvent, status commerce.OrderStatus, audit commerce.AuditLog) error
 }
@@ -33,10 +34,21 @@ func (f PaymentAuthorizerFunc) AuthorizePayment(ctx context.Context, event comme
 	return f(ctx, event)
 }
 
+type ShipmentCreator interface {
+	CreateShipment(ctx context.Context, event commerce.OutboxEvent) (commerce.Shipment, error)
+}
+
+type ShipmentCreatorFunc func(context.Context, commerce.OutboxEvent) (commerce.Shipment, error)
+
+func (f ShipmentCreatorFunc) CreateShipment(ctx context.Context, event commerce.OutboxEvent) (commerce.Shipment, error) {
+	return f(ctx, event)
+}
+
 type Dependencies struct {
 	Projector         Projector
 	Orders            OrderStatusUpdater
 	PaymentAuthorizer PaymentAuthorizer
+	ShipmentCreator   ShipmentCreator
 	Clock             func() time.Time
 	NewID             func(prefix string) string
 }
@@ -181,9 +193,21 @@ func createShipment(ctx context.Context, deps Dependencies, event commerce.Outbo
 		return err
 	}
 	now := deps.Clock()
+	if deps.ShipmentCreator != nil {
+		shipment, err := deps.ShipmentCreator.CreateShipment(ctx, event)
+		if err != nil {
+			failed := nextEventAt(deps, event, "shipment.failed", now)
+			audit := systemAudit(event, "shipment.failed", now)
+			audit.Details["error"] = err.Error()
+			return deps.Projector.RecordShipmentFailed(ctx, event, failed, audit)
+		}
+		next := nextEventAt(deps, event, "shipment.created", now)
+		return deps.Projector.RecordShipmentCreated(ctx, event, next, normalizedShipment(deps, shipment, now), systemAudit(event, "shipment.created", now))
+	}
+
 	next := nextEventAt(deps, event, "shipment.created", now)
 	shipmentID := deps.NewID("shp")
-	shipment := commerce.Shipment{
+	shipment := normalizedShipment(deps, commerce.Shipment{
 		ShipmentID:     shipmentID,
 		Status:         "created",
 		Carrier:        "fake-carrier",
@@ -195,8 +219,31 @@ func createShipment(ctx context.Context, deps Dependencies, event commerce.Outbo
 				Description: "Shipment booking created by fulfillment worker.",
 			},
 		},
-	}
+	}, now)
 	return deps.Projector.RecordShipmentCreated(ctx, event, next, shipment, systemAudit(event, "shipment.created", now))
+}
+
+func normalizedShipment(deps Dependencies, shipment commerce.Shipment, now time.Time) commerce.Shipment {
+	if shipment.ShipmentID == "" {
+		shipment.ShipmentID = deps.NewID("shp")
+	}
+	if shipment.Status == "" {
+		shipment.Status = "created"
+	}
+	if shipment.Carrier == "" {
+		shipment.Carrier = "fake-carrier"
+	}
+	if shipment.TrackingNumber == "" {
+		shipment.TrackingNumber = "TRACK-" + shipment.ShipmentID
+	}
+	if len(shipment.Events) == 0 {
+		shipment.Events = []commerce.ShipmentEvent{{
+			OccurredAt:  now,
+			Status:      shipment.Status,
+			Description: "Shipment booking created by fulfillment worker.",
+		}}
+	}
+	return shipment
 }
 
 func completeOrder(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {

@@ -65,6 +65,9 @@
 - Payment worker authorization failures write `payment.failed` to the
   transactional outbox with audit details before compensation consumes the
   failure event.
+- Shipment worker provider failures write `shipment.failed` to the
+  transactional outbox with audit details before compensation consumes the
+  failure event.
 - The order finalizer updates the order to `completed` and writes
   `order.completed` through the transactional outbox.
 - The notification worker records durable email queueing projections for

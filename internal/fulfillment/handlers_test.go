@@ -145,6 +145,63 @@ func TestPaymentHandlerWritesFailureEventWhenAuthorizationFails(t *testing.T) {
 	}
 }
 
+func TestShipmentHandlerWritesFailureEventWhenProviderFails(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	ids := []string{"msg_inventory", "msg_payment", "pay_authorized", "msg_shipment_failed"}
+	now := time.Date(2026, 5, 29, 16, 0, 0, 0, time.UTC)
+	deps := Dependencies{
+		Projector: store,
+		Orders:    store,
+		Clock:     func() time.Time { return now },
+		NewID: func(string) string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	}
+	inventory := handlerForTest(t, messaging.InventoryReserveQueue, deps)
+	if err := inventory.HandleEvent(context.Background(), service.OutboxEvents()[0]); err != nil {
+		t.Fatalf("inventory handler returned error: %v", err)
+	}
+	payment := handlerForTest(t, messaging.PaymentsAuthorizeQueue, deps)
+	if err := payment.HandleEvent(context.Background(), lastOutboxEvent(service)); err != nil {
+		t.Fatalf("payment handler returned error: %v", err)
+	}
+	paymentAuthorized := lastOutboxEvent(service)
+	deps.ShipmentCreator = ShipmentCreatorFunc(func(context.Context, commerce.OutboxEvent) (commerce.Shipment, error) {
+		return commerce.Shipment{}, context.DeadlineExceeded
+	})
+
+	shipment := handlerForTest(t, messaging.ShipmentsCreateQueue, deps)
+	if err := shipment.HandleEvent(context.Background(), paymentAuthorized); err != nil {
+		t.Fatalf("shipment handler returned error: %v", err)
+	}
+
+	if got := eventTypes(service.OutboxEvents()); len(got) != 4 || got[3] != "shipment.failed" {
+		t.Fatalf("outbox event types = %v, want shipment.failed", got)
+	}
+	failed, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if failed.Shipment == nil || failed.Shipment.Status != "failed" {
+		t.Fatalf("shipment projection = %+v, want failed shipment", failed.Shipment)
+	}
+	logs := service.AuditLogs()
+	last := logs[len(logs)-1]
+	if last.Action != "shipment.failed" {
+		t.Fatalf("last audit action = %q, want shipment.failed", last.Action)
+	}
+	if last.Details["error"] == "" {
+		t.Fatalf("shipment failure audit details = %+v, want error", last.Details)
+	}
+}
+
 func TestNotificationHandlerQueuesEmailAudit(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)

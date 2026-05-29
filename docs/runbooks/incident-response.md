@@ -90,6 +90,22 @@ Actions:
 3. If transient, wait for retry queues to drain before manual intervention.
 4. If request-specific, let compensation cancel the order and notify the merchant.
 
+## Scenario: shipment provider failure after payment authorization
+
+Symptoms:
+
+- `shipment.failed` events appear after `payment.authorized`
+- compensation worker records `compensation.shipment_failed`
+- affected orders move to `cancellation_pending` for manual review
+
+Actions:
+
+1. Inspect the `shipment.failed` audit details for the carrier/provider error.
+2. Confirm whether the payment authorization can be voided automatically or
+   needs manual provider action.
+3. Stop replaying shipment messages until carrier health is verified.
+4. Let compensation move the order to manual review before notifying support.
+
 ## Scenario: duplicate merchant order submission
 
 Symptoms:

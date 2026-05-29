@@ -108,6 +108,8 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
 - Payment authorization failures are converted to `payment.failed` outbox
   events so compensation can run through the same broker path
 - Shipment worker consumes payment authorizations, records `shipments`, and writes `shipment.created` to the outbox
+- Shipment provider failures are converted to `shipment.failed` outbox events
+  for compensation and operations visibility
 - Order finalizer consumes shipment creation, durably marks the order `completed`, and writes `order.completed` to the outbox
 - Notification worker consumes order completion or cancellation and records a durable email notification projection
 - Compensation worker consumes inventory, payment, or shipment failure events and records durable compensation outcomes
@@ -141,6 +143,7 @@ The current implementation includes Go tests for:
 - inbox idempotency by consumer and message ID
 - RabbitMQ consumer trace propagation, inbox deduplication, retry scheduling, and ack/nack behavior
 - payment authorization failure handling with durable `payment.failed` outbox events
+- shipment provider failure handling with durable `shipment.failed` outbox events
 - fulfillment worker happy-path progression through durable inventory, payment, shipment, and order completion projections
 
 The performance layer includes compose-backed smoke, load, stress, and spike

@@ -101,6 +101,14 @@ The current worker records the carrier handoff projection in one transaction:
 3. insert `outbox_events` row for `shipment.created`
 4. insert `audit_logs` row for `shipment.created`
 
+### Shipment failure
+
+The current worker records carrier booking failure in one transaction:
+
+1. touch the order version and update timestamp
+2. insert `outbox_events` row for `shipment.failed`
+3. insert `audit_logs` row for `shipment.failed` with the provider error detail
+
 ### Notification queueing
 
 The current worker records customer email queueing in one transaction:

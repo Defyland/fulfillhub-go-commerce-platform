@@ -172,6 +172,23 @@ func (s *MemoryStore) RecordShipmentCreated(_ context.Context, source OutboxEven
 	return nil
 }
 
+func (s *MemoryStore) RecordShipmentFailed(_ context.Context, source OutboxEvent, next OutboxEvent, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	order, ok := s.orders[source.OrderID]
+	if !ok {
+		return ErrNotFound
+	}
+	order.Shipment = &Shipment{
+		Status: "failed",
+	}
+	order.UpdatedAt = next.OccurredAt
+	s.outbox = append(s.outbox, next)
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
 func (s *MemoryStore) RecordNotificationQueued(_ context.Context, source OutboxEvent, audit AuditLog) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

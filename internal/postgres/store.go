@@ -409,6 +409,44 @@ func (s *Store) RecordShipmentCreated(ctx context.Context, source commerce.Outbo
 	return nil
 }
 
+func (s *Store) RecordShipmentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_shipment_failed", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", source.OrderID),
+		attribute.String("fulfillhub.merchant_id", source.MerchantID),
+	))
+	defer finishSpan(span, &err, "record shipment failure")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record shipment failure: %w", err)
+	}
+	defer rollback(tx)
+
+	if _, err := getOrderTx(ctx, tx, source.OrderID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET updated_at = $2,
+			version = version + 1
+		WHERE order_id = $1
+	`, source.OrderID, next.OccurredAt); err != nil {
+		return fmt.Errorf("touch order after shipment failure: %w", err)
+	}
+	if err := insertOutboxEvent(ctx, tx, next); err != nil {
+		return err
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record shipment failure: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) RecordNotificationQueued(ctx context.Context, source commerce.OutboxEvent, audit commerce.AuditLog) (err error) {
 	ctx = contextOrBackground(ctx)
 	ctx, span := postgresTracer().Start(ctx, "postgres.record_notification_queued", trace.WithAttributes(

@@ -52,6 +52,7 @@ The current executable slice includes:
 - RabbitMQ consumer primitive with inbox deduplication, retry scheduling, and explicit ack/nack behavior
 - fulfillment worker executable with durable inventory, payment, shipment, notification, compensation, and order-completion projections
 - payment authorization failure projection through transactional `payment.failed` events
+- shipment provider failure projection through transactional `shipment.failed` events
 - live RabbitMQ topology integration coverage
 - Redis-backed rate limiting
 - inbox idempotency primitives
