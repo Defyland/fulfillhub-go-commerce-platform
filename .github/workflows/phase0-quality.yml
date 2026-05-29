@@ -168,7 +168,7 @@ jobs:
           image: fulfillhub-ci:latest
           artifact-name: fulfillhub-sbom.spdx.json
       - name: Scan repository filesystem
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
@@ -176,7 +176,7 @@ jobs:
           ignore-unfixed: true
           exit-code: "1"
       - name: Scan container image
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: fulfillhub-ci:latest
           severity: HIGH,CRITICAL
@@ -204,6 +204,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

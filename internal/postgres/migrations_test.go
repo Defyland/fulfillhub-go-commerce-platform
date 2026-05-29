@@ -721,6 +721,8 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("insert manual review order: %v", err)
 	}
+	advancePostgresOrderStatusForTest(t, ctx, store, manualReviewOrder, commerce.StatusInventoryReserved, manualReviewCreated, now.Add(12*time.Second+250*time.Millisecond))
+	advancePostgresOrderStatusForTest(t, ctx, store, manualReviewOrder, commerce.StatusPaymentAuthorized, manualReviewCreated, now.Add(12*time.Second+500*time.Millisecond))
 	manualReviewShipment := commerce.OutboxEvent{
 		MessageID:     "msg_pg_manual_review_shipment_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: manualReviewCreated.CorrelationID,
@@ -746,10 +748,33 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("record manual review shipment: %v", err)
 	}
+	cancellationPendingEvent := commerce.OutboxEvent{
+		MessageID:     "msg_pg_manual_review_cancel_pending_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: manualReviewCreated.CorrelationID,
+		CausationID:   manualReviewShipment.MessageID,
+		EventType:     "order.cancel_requested",
+		OrderID:       manualReviewOrder.OrderID,
+		MerchantID:    manualReviewOrder.MerchantID,
+		OccurredAt:    now.Add(13*time.Second + 500*time.Millisecond),
+	}
+	if _, err := store.UpdateOrderStatus(ctx, manualReviewOrder.OrderID, commerce.StatusCancellationPending, cancellationPendingEvent.OccurredAt, cancellationPendingEvent, commerce.AuditLog{
+		MerchantID:    manualReviewOrder.MerchantID,
+		OrderID:       manualReviewOrder.OrderID,
+		ActorType:     "merchant_user",
+		ActorID:       "usr_cancel_pg_test",
+		Action:        "order.cancel_requested",
+		CorrelationID: manualReviewCreated.CorrelationID,
+		CreatedAt:     cancellationPendingEvent.OccurredAt,
+		Details: map[string]string{
+			"reason": "customer_requested",
+		},
+	}); err != nil {
+		t.Fatalf("record manual review cancellation pending status: %v", err)
+	}
 	manualReviewEvent := commerce.OutboxEvent{
 		MessageID:     "msg_pg_manual_review_required_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		CorrelationID: manualReviewCreated.CorrelationID,
-		CausationID:   manualReviewShipment.MessageID,
+		CausationID:   cancellationPendingEvent.MessageID,
 		EventType:     "order.manual_review_required",
 		OrderID:       manualReviewOrder.OrderID,
 		MerchantID:    manualReviewOrder.MerchantID,
@@ -1105,6 +1130,31 @@ func seedInventory(t testing.TB, ctx context.Context, store *Store, merchantID, 
 			t.Fatalf("seed inventory item %s: %v", sku, err)
 		}
 	}
+}
+
+func advancePostgresOrderStatusForTest(t testing.TB, ctx context.Context, store *Store, order *commerce.Order, status commerce.OrderStatus, source commerce.OutboxEvent, at time.Time) commerce.OutboxEvent {
+	t.Helper()
+	event := commerce.OutboxEvent{
+		MessageID:     "msg_pg_" + string(status) + "_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: source.CorrelationID,
+		CausationID:   source.MessageID,
+		EventType:     "test.status_advanced",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+		OccurredAt:    at,
+	}
+	if _, err := store.UpdateOrderStatus(ctx, order.OrderID, status, at, event, commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "test",
+		ActorID:       "test",
+		Action:        "test.status_advanced",
+		CorrelationID: source.CorrelationID,
+		CreatedAt:     at,
+	}); err != nil {
+		t.Fatalf("advance postgres order to %s: %v", status, err)
+	}
+	return event
 }
 
 func assertInventoryQuantities(t testing.TB, ctx context.Context, store *Store, merchantID, sku string, available, reserved int) {
