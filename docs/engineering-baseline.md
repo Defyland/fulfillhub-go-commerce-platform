@@ -56,7 +56,7 @@ The current executable slice includes:
 
 It intentionally does not include yet:
 
-- production JWT validation for operations access
+- issuer, audience, and key-rotation policy for operations JWTs
 - durable DLQ replay audit records
 - SQL and RabbitMQ trace instrumentation
 - compose-backed CPU, memory, queue-depth, and Redis limiter profiling

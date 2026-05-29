@@ -470,7 +470,7 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
-      description: Operations token with role claims.
+      description: Operations JWT with role claims. The local slice accepts a static ops token only when OPS_JWT_SECRET is not configured.
   schemas:
     HealthResponse:
       type: object

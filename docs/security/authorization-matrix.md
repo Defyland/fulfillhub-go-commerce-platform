@@ -23,6 +23,8 @@
 
 - Merchant API keys map to fixed merchant IDs in the local slice.
 - Request bodies cannot override `merchant_id`.
-- Operations access is intentionally minimal and represented by `Bearer ops-token`.
-- Production operations access should validate JWT issuer, audience, expiry, and role claims.
+- Operations access validates HS256 JWTs when `OPS_JWT_SECRET` is configured.
+- Accepted operations roles are `operations` and `ops`.
+- `Bearer ops-token` is a local-only fallback when `OPS_JWT_SECRET` is absent.
+- Production operations access should additionally validate JWT issuer, audience, and key rotation.
 - Metrics should sit behind network policy, gateway auth, or Prometheus-only scrape access outside local development.

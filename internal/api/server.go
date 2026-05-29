@@ -2,6 +2,9 @@ package api
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,6 +31,7 @@ type Server struct {
 	logger     *slog.Logger
 	tracer     trace.Tracer
 	propagator propagation.TextMapPropagator
+	opsSecret  []byte
 }
 
 type RateLimiter interface {
@@ -39,6 +43,7 @@ type Options struct {
 	Logger         *slog.Logger
 	TracerProvider trace.TracerProvider
 	Propagator     propagation.TextMapPropagator
+	OpsJWTSecret   string
 }
 
 type metrics struct {
@@ -48,12 +53,21 @@ type metrics struct {
 
 type actor struct {
 	MerchantID string
+	ActorID    string
 	Ops        bool
 }
 
 type requestState struct {
 	ActorType  string
+	ActorID    string
 	MerchantID string
+}
+
+type opsJWTClaims struct {
+	Subject   string   `json:"sub"`
+	ExpiresAt int64    `json:"exp"`
+	Role      string   `json:"role"`
+	Roles     []string `json:"roles"`
 }
 
 type requestStateKey struct{}
@@ -117,6 +131,7 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 		logger:     options.Logger,
 		tracer:     tracerProvider.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"),
 		propagator: propagator,
+		opsSecret:  []byte(options.OpsJWTSecret),
 	}
 }
 
@@ -150,6 +165,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		)
 		if state.ActorType != "" {
 			span.SetAttributes(attribute.String("fulfillhub.actor_type", state.ActorType))
+		}
+		if state.ActorID != "" {
+			span.SetAttributes(attribute.String("fulfillhub.actor_id", state.ActorID))
 		}
 		if state.MerchantID != "" {
 			span.SetAttributes(attribute.String("fulfillhub.merchant_id", state.MerchantID))
@@ -363,13 +381,79 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, requestID,
 		recordActor(r.Context(), act)
 		return act, true
 	}
-	if r.Header.Get("Authorization") == "Bearer ops-token" {
-		act := actor{Ops: true}
-		recordActor(r.Context(), act)
-		return act, true
+	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
+		if len(s.opsSecret) == 0 && token == "ops-token" {
+			act := actor{Ops: true, ActorID: "local-ops"}
+			recordActor(r.Context(), act)
+			return act, true
+		}
+		if subject, ok := validateOpsJWT(token, s.opsSecret, time.Now().UTC()); ok {
+			act := actor{Ops: true, ActorID: subject}
+			recordActor(r.Context(), act)
+			return act, true
+		}
+		s.writeError(w, http.StatusUnauthorized, "unauthorized", "Operations token is missing or invalid.", false, nil, requestID, correlationID)
+		return actor{}, false
 	}
 	s.writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required.", false, nil, requestID, correlationID)
 	return actor{}, false
+}
+
+func bearerToken(header string) string {
+	authType, token, ok := strings.Cut(strings.TrimSpace(header), " ")
+	if !ok || !strings.EqualFold(authType, "Bearer") {
+		return ""
+	}
+	return strings.TrimSpace(token)
+}
+
+func validateOpsJWT(token string, secret []byte, now time.Time) (string, bool) {
+	if len(secret) == 0 {
+		return "", false
+	}
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return "", false
+	}
+	header, err := decodeJWTPart[map[string]any](parts[0])
+	if err != nil || header["alg"] != "HS256" {
+		return "", false
+	}
+	signingInput := parts[0] + "." + parts[1]
+	mac := hmac.New(sha256.New, secret)
+	_, _ = mac.Write([]byte(signingInput))
+	want := mac.Sum(nil)
+	got, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || !hmac.Equal(got, want) {
+		return "", false
+	}
+	claims, err := decodeJWTPart[opsJWTClaims](parts[1])
+	if err != nil || strings.TrimSpace(claims.Subject) == "" || claims.ExpiresAt <= now.Unix() || !claims.hasOperationsRole() {
+		return "", false
+	}
+	return claims.Subject, true
+}
+
+func decodeJWTPart[T any](part string) (T, error) {
+	var value T
+	raw, err := base64.RawURLEncoding.DecodeString(part)
+	if err != nil {
+		return value, err
+	}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return value, err
+	}
+	return value, nil
+}
+
+func (c opsJWTClaims) hasOperationsRole() bool {
+	for _, role := range append(c.Roles, c.Role) {
+		switch strings.TrimSpace(role) {
+		case "operations", "ops":
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleCommerceError(w http.ResponseWriter, err error, requestID, correlationID string) {
@@ -445,6 +529,9 @@ func (s *Server) logRequest(ctx context.Context, r *http.Request, status, bytes 
 	if state, ok := ctx.Value(requestStateKey{}).(*requestState); ok {
 		if state.ActorType != "" {
 			attrs = append(attrs, slog.String("actor_type", state.ActorType))
+		}
+		if state.ActorID != "" {
+			attrs = append(attrs, slog.String("actor_id", state.ActorID))
 		}
 		if state.MerchantID != "" {
 			attrs = append(attrs, slog.String("merchant_id", state.MerchantID))
@@ -531,8 +618,10 @@ func recordActor(ctx context.Context, act actor) {
 	}
 	if act.Ops {
 		state.ActorType = "ops"
+		state.ActorID = act.ActorID
 		return
 	}
 	state.ActorType = "merchant"
+	state.ActorID = act.MerchantID
 	state.MerchantID = act.MerchantID
 }

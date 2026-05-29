@@ -3,12 +3,16 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
 	"go.opentelemetry.io/otel/propagation"
@@ -238,6 +242,63 @@ func TestOpsTokenCanReadMerchantOrder(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 }
 
+func TestOpsJWTCanReadMerchantOrder(t *testing.T) {
+	const secret = "ops-jwt-secret"
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		OpsJWTSecret: secret,
+	})
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	token := signOpsJWT(t, secret, map[string]any{
+		"sub":   "usr_ops_1",
+		"roles": []string{"operations"},
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+orderID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+}
+
+func TestOpsJWTRejectsMissingOperationsRole(t *testing.T) {
+	const secret = "ops-jwt-secret"
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		OpsJWTSecret: secret,
+	})
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	token := signOpsJWT(t, secret, map[string]any{
+		"sub":   "usr_support_1",
+		"roles": []string{"support"},
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+orderID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusUnauthorized)
+}
+
+func TestStaticOpsTokenDisabledWhenJWTSecretConfigured(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		OpsJWTSecret: "ops-jwt-secret",
+	})
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+orderID, nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusUnauthorized)
+}
+
 func TestCancelOrderAcceptsValidRequest(t *testing.T) {
 	server := testServer()
 	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
@@ -422,4 +483,25 @@ func assertSpanAttribute(t testing.TB, span sdktrace.ReadOnlySpan, key, want str
 		}
 	}
 	t.Fatalf("span attribute %s not found", key)
+}
+
+func signOpsJWT(t testing.TB, secret string, claims map[string]any) string {
+	t.Helper()
+	header := map[string]string{"alg": "HS256", "typ": "JWT"}
+	encodedHeader := encodeJWTPart(t, header)
+	encodedClaims := encodeJWTPart(t, claims)
+	signingInput := encodedHeader + "." + encodedClaims
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(signingInput))
+	signature := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	return signingInput + "." + signature
+}
+
+func encodeJWTPart(t testing.TB, value any) string {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal jwt part: %v", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw)
 }

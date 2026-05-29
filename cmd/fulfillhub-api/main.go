@@ -51,7 +51,10 @@ func main() {
 		store = postgresStore
 	}
 
-	options := api.Options{Logger: logger}
+	options := api.Options{
+		Logger:       logger,
+		OpsJWTSecret: os.Getenv("OPS_JWT_SECRET"),
+	}
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
 		client, err := ratelimit.NewRedisClient(redisURL)
 		if err != nil {

@@ -177,7 +177,8 @@ observability expansion after the HTTP runtime baseline.
 ## Security considerations
 
 - Merchant-facing APIs authenticate through scoped API keys and derive `merchant_id` from the key
-- Operations-only capabilities use JWT bearer tokens with role claims
+- Operations-only capabilities use JWT bearer tokens with role claims when `OPS_JWT_SECRET` is configured
+- The local slice accepts `Bearer ops-token` only when `OPS_JWT_SECRET` is not set
 - Tenant isolation is enforced on every read and write path via `merchant_id`
 - Input validation rejects malformed SKU, quantity, address, and idempotency payloads
 - Rate limiting protects order creation and lookup endpoints
@@ -221,6 +222,12 @@ Enable local OpenTelemetry span output with:
 
 ```sh
 OTEL_TRACES_EXPORTER=stdout go run ./cmd/fulfillhub-api
+```
+
+Require signed operations JWTs with:
+
+```sh
+OPS_JWT_SECRET='local-development-secret' go run ./cmd/fulfillhub-api
 ```
 
 To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API applies embedded migrations and switches from the in-memory store to the PostgreSQL store.
