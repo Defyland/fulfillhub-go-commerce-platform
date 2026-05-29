@@ -18,7 +18,17 @@ jobs:
       - name: Validate repository baseline
         run: ./scripts/validate_phase0.sh
       - name: Validate shell scripts
-        run: sh -n scripts/validate_phase0.sh scripts/run_compose_profile.sh scripts/run_compose_saga_smoke.sh
+        run: sh -n scripts/validate_phase0.sh scripts/validate_production_readiness.sh scripts/run_compose_profile.sh scripts/run_compose_saga_smoke.sh
+
+  production-readiness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Validate production readiness pack
+        run: ./scripts/validate_production_readiness.sh
 
   go:
     runs-on: ubuntu-latest

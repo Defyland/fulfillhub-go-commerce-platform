@@ -17,6 +17,7 @@ deployments/kubernetes
 deployments/kubernetes/base
 deployments/otel-collector
 deployments/prometheus
+deployments/prometheus/rules
 internal
 internal/api
 internal/commerce
@@ -32,6 +33,7 @@ docs/diagrams
 docs/events
 docs/observability
 docs/runbooks
+docs/security
 benchmarks
 benchmarks/k6
 benchmarks/results
@@ -62,6 +64,7 @@ cmd/fulfillhub-migrate/main.go
 cmd/fulfillhub-outbox-relay/main.go
 cmd/fulfillhub-worker/main.go
 deployments/prometheus/prometheus.yml
+deployments/prometheus/rules/fulfillhub-alerts.yml
 deployments/otel-collector/config.yml
 deployments/kubernetes/base/kustomization.yaml
 deployments/kubernetes/base/deployment-api.yaml
@@ -107,7 +110,11 @@ internal/postgres/migrations/013_projection_status_checks.sql
 internal/providers/payment.go
 internal/providers/providers_test.go
 internal/providers/shipment.go
+internal/providers/webhook.go
+internal/providers/webhook_test.go
 internal/spec/consistency_test.go
+internal/spec/production_readiness_test.go
+docs/production-readiness.md
 docs/engineering-baseline.md
 docs/api/request-response-examples.md
 docs/api/error-format.md
@@ -122,6 +129,13 @@ docs/diagrams/order-saga-sequence.md
 docs/events/catalog.md
 docs/observability/grafana-dashboard.json
 docs/runbooks/incident-response.md
+docs/runbooks/deployment-rollback.md
+docs/runbooks/slo-alert-response.md
+docs/runbooks/data-protection.md
+docs/security/threat-model.md
+docs/security/authorization-matrix.md
+docs/security/secrets-management.md
+docs/security/supply-chain.md
 docs/adr/0001-modular-monolith-first.md
 docs/adr/0002-rabbitmq-outbox-inbox.md
 docs/adr/0003-authentication-and-authorization.md
@@ -138,6 +152,7 @@ benchmarks/results/2026-05-29-compose-load-stress-spike.md
 scripts/run_compose_profile.sh
 scripts/run_compose_saga_smoke.sh
 scripts/validate_benchmark_budgets.py
+scripts/validate_production_readiness.sh
 .github/workflows/phase0-quality.yml
 "
 
@@ -185,6 +200,7 @@ fi
 
 go test ./...
 go vet ./...
+./scripts/validate_production_readiness.sh
 
 if command -v npx >/dev/null 2>&1; then
   npx -y @stoplight/spectral-cli lint openapi.yaml

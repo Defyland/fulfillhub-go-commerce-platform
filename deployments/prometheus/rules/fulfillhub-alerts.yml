@@ -1,0 +1,84 @@
+groups:
+  - name: fulfillhub.availability
+    rules:
+      - alert: FulfillHubAPIDown
+        expr: up{job="fulfillhub-api"} == 0
+        for: 2m
+        labels:
+          severity: page
+          service: fulfillhub
+        annotations:
+          summary: FulfillHub API is not scrapeable.
+          description: Prometheus cannot scrape the API target for more than 2 minutes.
+          runbook_url: https://github.com/Defyland/fulfillhub-go-commerce-platform/blob/main/docs/runbooks/slo-alert-response.md#api-down
+
+      - alert: FulfillHubRuntimeMetricsUnavailable
+        expr: min(fulfillhub_outbox_metrics_up, fulfillhub_order_status_metrics_up, fulfillhub_rabbitmq_queue_metrics_up) == 0
+        for: 5m
+        labels:
+          severity: ticket
+          service: fulfillhub
+        annotations:
+          summary: FulfillHub runtime metrics are partially unavailable.
+          description: At least one outbox, order-status, or RabbitMQ metrics collector is failing.
+          runbook_url: https://github.com/Defyland/fulfillhub-go-commerce-platform/blob/main/docs/runbooks/slo-alert-response.md#runtime-metrics-unavailable
+
+  - name: fulfillhub.saga
+    rules:
+      - alert: FulfillHubOutboxStalled
+        expr: fulfillhub_outbox_oldest_unpublished_age_seconds > 300
+        for: 5m
+        labels:
+          severity: page
+          service: fulfillhub
+        annotations:
+          summary: FulfillHub outbox relay is stalled.
+          description: The oldest unpublished outbox event is older than 5 minutes.
+          runbook_url: https://github.com/Defyland/fulfillhub-go-commerce-platform/blob/main/docs/runbooks/slo-alert-response.md#outbox-stalled
+
+      - alert: FulfillHubDLQBacklog
+        expr: sum(fulfillhub_rabbitmq_queue_messages_ready{queue=~".*\\.dlq"}) > 0
+        for: 5m
+        labels:
+          severity: page
+          service: fulfillhub
+        annotations:
+          summary: FulfillHub has messages in dead-letter queues.
+          description: One or more DLQs contain ready messages after the retry budget was exhausted.
+          runbook_url: https://github.com/Defyland/fulfillhub-go-commerce-platform/blob/main/docs/runbooks/slo-alert-response.md#dlq-backlog
+
+      - alert: FulfillHubQueueWithoutConsumers
+        expr: >-
+          fulfillhub_rabbitmq_queue_messages_ready{queue!~".*\\.dlq"} > 0
+          and on(queue)
+          fulfillhub_rabbitmq_queue_consumers == 0
+        for: 3m
+        labels:
+          severity: page
+          service: fulfillhub
+        annotations:
+          summary: FulfillHub queue has backlog and no consumers.
+          description: A saga queue has ready messages but no active consumers.
+          runbook_url: https://github.com/Defyland/fulfillhub-go-commerce-platform/blob/main/docs/runbooks/slo-alert-response.md#queue-without-consumers
+
+      - alert: FulfillHubManualReviewBacklog
+        expr: fulfillhub_orders_total{status="manual_review"} > 0
+        for: 15m
+        labels:
+          severity: ticket
+          service: fulfillhub
+        annotations:
+          summary: FulfillHub has orders waiting for manual review.
+          description: Orders remain in manual review and need operations triage.
+          runbook_url: https://github.com/Defyland/fulfillhub-go-commerce-platform/blob/main/docs/runbooks/slo-alert-response.md#manual-review-backlog
+
+      - alert: FulfillHubOrderFailureRatioHigh
+        expr: sum(fulfillhub_orders_total{status="failed"}) / clamp_min(sum(fulfillhub_orders_total), 1) > 0.05
+        for: 15m
+        labels:
+          severity: ticket
+          service: fulfillhub
+        annotations:
+          summary: FulfillHub order failure ratio is above budget.
+          description: Failed orders exceed 5 percent of the current order population.
+          runbook_url: https://github.com/Defyland/fulfillhub-go-commerce-platform/blob/main/docs/runbooks/slo-alert-response.md#order-failure-ratio-high

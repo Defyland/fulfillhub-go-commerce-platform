@@ -199,6 +199,9 @@ FulfillHub’s operational baseline includes:
 - `/metrics` for the current executable slice
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
 - dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
+- Prometheus alert rules for API availability, outbox stall, DLQ backlog,
+  missing consumers, manual review backlog, and order failure ratio in
+  [deployments/prometheus/rules/fulfillhub-alerts.yml](./deployments/prometheus/rules/fulfillhub-alerts.yml)
 
 Compose-backed smoke, load, stress, and spike resource measurements are
 included alongside the HTTP, SQL, RabbitMQ, publish-path, and consume-path
@@ -425,7 +428,7 @@ BASE_URL='http://localhost:8080' k6 run benchmarks/k6/stress.js
 BASE_URL='http://localhost:8080' k6 run benchmarks/k6/spike.js
 ```
 
-The GitHub Actions workflow at `.github/workflows/phase0-quality.yml` runs repository validation, `gofmt`, `go vet`, tests, PostgreSQL integration tests, benchmark smoke, markdown linting, OpenAPI validation, secret scanning, and Docker build validation.
+The GitHub Actions workflow at `.github/workflows/phase0-quality.yml` runs repository validation, production-readiness validation, `gofmt`, `go vet`, tests, PostgreSQL integration tests, benchmark smoke, markdown linting, OpenAPI validation, secret scanning, supply-chain scans, and Docker build validation.
 
 Production deployment and operations artifacts are captured in
 [docs/production-readiness.md](./docs/production-readiness.md) and
@@ -433,6 +436,10 @@ Production deployment and operations artifacts are captured in
 a blueprint for real environments: image tags, managed PostgreSQL/RabbitMQ/Redis
 endpoints, External Secrets provider, ingress, and cloud IAM bindings must be
 supplied by the target platform.
+
+Operational launch controls are documented in the deployment, alert, data
+protection, secrets, and supply-chain runbooks under `docs/runbooks` and
+`docs/security`.
 
 ## Failure scenarios
 

@@ -75,6 +75,10 @@ with the previous schema. For each release, record:
 - manual compensation steps for partially processed provider or saga side effects
 
 Detailed actions live in [runbooks/deployment-rollback.md](./runbooks/deployment-rollback.md).
+Alert handling lives in [runbooks/slo-alert-response.md](./runbooks/slo-alert-response.md).
+Data recovery and retention live in [runbooks/data-protection.md](./runbooks/data-protection.md).
+Secret rotation lives in [security/secrets-management.md](./security/secrets-management.md).
+Release integrity lives in [security/supply-chain.md](./security/supply-chain.md).
 
 ## Provider hardening
 

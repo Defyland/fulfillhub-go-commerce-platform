@@ -84,6 +84,10 @@ func TestProductionReadinessDocsDeclareBoundariesAndGates(t *testing.T) {
 			"Deployment model",
 			"Migration policy",
 			"Rollback policy",
+			"Alert handling",
+			"Data recovery",
+			"Secret rotation",
+			"Release integrity",
 			"Provider hardening",
 			"Production gap log",
 			"fulfillhub-migrate",
@@ -98,10 +102,111 @@ func TestProductionReadinessDocsDeclareBoundariesAndGates(t *testing.T) {
 			"Rollback flow",
 			"Migration rollback rules",
 		},
+		"docs/runbooks/slo-alert-response.md": {
+			"Service objectives",
+			"FulfillHubOutboxStalled",
+			"FulfillHubDLQBacklog",
+			"FulfillHubQueueWithoutConsumers",
+			"FulfillHubOrderFailureRatioHigh",
+		},
+		"docs/runbooks/data-protection.md": {
+			"Backup policy",
+			"Restore drill",
+			"Retention policy",
+			"Purge and privacy requests",
+			"Backward-compatible migrations",
+		},
+		"docs/security/secrets-management.md": {
+			"Secret sources",
+			"Rotation policy",
+			"PAYMENT_WEBHOOK_SECRET",
+			"SHIPMENT_WEBHOOK_SECRET",
+		},
+		"docs/security/supply-chain.md": {
+			"Current automated controls",
+			"Release artifact policy",
+			"Cosign",
+			"SLSA",
+		},
 		"README.md": {
 			"go run ./cmd/fulfillhub-migrate",
 			"docs/production-readiness.md",
 			"deployments/kubernetes/base",
+		},
+	}
+
+	for path, fragments := range required {
+		body := readRepoFile(t, path)
+		for _, fragment := range fragments {
+			if !strings.Contains(body, fragment) {
+				t.Fatalf("%s must contain %q", path, fragment)
+			}
+		}
+	}
+}
+
+func TestPrometheusAlertRulesDeclareActionableRunbooks(t *testing.T) {
+	alertRules := readRepoFile(t, "deployments/prometheus/rules/fulfillhub-alerts.yml")
+	assertYAMLParses(t, "deployments/prometheus/rules/fulfillhub-alerts.yml", alertRules)
+
+	alerts := []string{
+		"FulfillHubAPIDown",
+		"FulfillHubRuntimeMetricsUnavailable",
+		"FulfillHubOutboxStalled",
+		"FulfillHubDLQBacklog",
+		"FulfillHubQueueWithoutConsumers",
+		"FulfillHubManualReviewBacklog",
+		"FulfillHubOrderFailureRatioHigh",
+	}
+	for _, alert := range alerts {
+		if !strings.Contains(alertRules, "alert: "+alert) {
+			t.Fatalf("alert rules must contain %s", alert)
+		}
+	}
+	if strings.Count(alertRules, "runbook_url:") < len(alerts) {
+		t.Fatalf("each alert must declare a runbook_url")
+	}
+	for _, fragment := range []string{
+		"severity: page",
+		"severity: ticket",
+		"fulfillhub_outbox_oldest_unpublished_age_seconds",
+		"fulfillhub_rabbitmq_queue_messages_ready",
+		`fulfillhub_orders_total{status="manual_review"}`,
+		`fulfillhub_orders_total{status="failed"}`,
+	} {
+		if !strings.Contains(alertRules, fragment) {
+			t.Fatalf("alert rules must contain %q", fragment)
+		}
+	}
+
+	prometheus := readRepoFile(t, "deployments/prometheus/prometheus.yml")
+	if !strings.Contains(prometheus, "rule_files:") || !strings.Contains(prometheus, "/etc/prometheus/rules/*.yml") {
+		t.Fatal("prometheus.yml must load production alert rules")
+	}
+	compose := readRepoFile(t, "docker-compose.yml")
+	if !strings.Contains(compose, "./deployments/prometheus/rules:/etc/prometheus/rules:ro") {
+		t.Fatal("docker-compose.yml must mount Prometheus alert rules")
+	}
+}
+
+func TestProductionReadinessValidationRunsInCI(t *testing.T) {
+	required := map[string][]string{
+		"scripts/validate_production_readiness.sh": {
+			"FulfillHubOutboxStalled",
+			"runbook_url:",
+			"go test ./internal/spec",
+			"Kubernetes production blueprint must not contain literal local credentials",
+		},
+		"scripts/validate_phase0.sh": {
+			"./scripts/validate_production_readiness.sh",
+			"deployments/prometheus/rules/fulfillhub-alerts.yml",
+			"docs/security/secrets-management.md",
+			"docs/runbooks/data-protection.md",
+		},
+		".github/workflows/phase0-quality.yml": {
+			"production-readiness",
+			"Validate production readiness pack",
+			"./scripts/validate_production_readiness.sh",
 		},
 	}
 
@@ -148,5 +253,13 @@ func assertValidYAMLDocuments(t testing.TB, path, body string) {
 	}
 	if decoded == 0 {
 		t.Fatalf("%s must contain at least one YAML document", path)
+	}
+}
+
+func assertYAMLParses(t testing.TB, path, body string) {
+	t.Helper()
+	var value any
+	if err := yaml.Unmarshal([]byte(body), &value); err != nil {
+		t.Fatalf("parse %s: %v", path, err)
 	}
 }

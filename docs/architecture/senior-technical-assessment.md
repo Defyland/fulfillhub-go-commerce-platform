@@ -70,6 +70,9 @@ history.
 - Added production-readiness evidence: controlled migration binary, Kubernetes
   deployment blueprint, rollout/rollback runbook, and signed provider webhook
   verification with replay protection.
+- Added production SRE/security artifacts: Prometheus alert rules with
+  runbook URLs, SLO response guidance, data protection policy, secret rotation
+  model, supply-chain release policy, and CI validation for the readiness pack.
 
 ## Remaining recommendations
 

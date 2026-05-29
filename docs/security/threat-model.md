@@ -10,6 +10,7 @@
 | Outbox messages | Duplicate side effects | Message IDs, inbox deduplication, explicit acknowledgements |
 | Operator actions | Unauthorized cancellation or replay | Signed operations JWT, requested actor metadata, audit logs |
 | Secrets | Credential disclosure | Environment variables only, secret scanning in CI |
+| Provider webhooks | Forged or replayed provider side effects | HMAC verification, timestamp tolerance, replay store |
 
 ## Trust Boundaries
 
@@ -21,6 +22,8 @@
 - Redis is a control-plane dependency for rate limiting when `REDIS_URL` is configured.
 - OpenTelemetry Collector receives trace metadata over the internal Compose
   network when OTLP export is enabled.
+- External PSP and shipping providers send signed webhooks over public network
+  boundaries and must be verified before any domain mutation.
 
 ## Implemented Controls
 
@@ -45,9 +48,14 @@
   communication diagnostics.
 - Worker-driven compensation records write audit logs for inventory, payment,
   and shipment failure diagnostics.
+- Provider webhooks can be verified with HMAC SHA-256, bounded timestamp
+  tolerance, previous-secret rotation, and event-ID replay protection before
+  side effects run.
 - DLQ replay requires `DATABASE_URL` and `OPS_ACTOR_ID`, then records durable
   `dlq.replay` audit details for success and failure attempts.
 - Operations JWTs are validated with HS256, expiry, subject, `operations` or
   `ops` role claims, optional issuer/audience checks, and previous secrets
   during key rotation.
-- CI runs Go tests, race detection, OpenAPI linting, markdown linting, Docker build validation, and gitleaks.
+- CI runs Go tests, race detection, OpenAPI linting, markdown linting, Docker
+  build validation, production-readiness validation, supply-chain scans, and
+  gitleaks.
