@@ -19,6 +19,8 @@
 - PostgreSQL is the durable consistency boundary for orders, outbox, inbox, and audit logs.
 - RabbitMQ is an at-least-once delivery boundary; consumers must be idempotent.
 - Redis is a control-plane dependency for rate limiting when `REDIS_URL` is configured.
+- OpenTelemetry Collector receives trace metadata over the internal Compose
+  network when OTLP export is enabled.
 
 ## Implemented Controls
 
@@ -27,7 +29,8 @@
 - Create-order requests require `Idempotency-Key` and reject duplicate external order IDs per merchant.
 - Redis-backed rate limiting protects write traffic when enabled.
 - Structured logs include request and correlation IDs without logging payment tokens.
-- HTTP and RabbitMQ publish/consume spans propagate W3C `traceparent` for incident correlation.
+- HTTP and RabbitMQ publish/consume spans propagate W3C `traceparent` for
+  incident correlation and can be exported to the local OTLP collector.
 - `order.create`, `order.cancel_requested`, and worker-driven `order.completed`
   audit logs are written with actor and correlation metadata.
 - Worker-driven inventory, payment, and shipment projections write audit logs

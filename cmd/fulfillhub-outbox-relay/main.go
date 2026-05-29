@@ -12,15 +12,12 @@ import (
 	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/observability"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	"go.opentelemetry.io/otel/propagation"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func main() {
-	shutdownTracing, err := configureTracing()
+	shutdownTracing, err := observability.ConfigureTracing(context.Background(), "fulfillhub-outbox-relay", os.Getenv, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -135,18 +132,4 @@ func newRabbitPublisherWithRetry(ctx context.Context, rabbitURL string) (*messag
 		case <-time.After(2 * time.Second):
 		}
 	}
-}
-
-func configureTracing() (func(context.Context) error, error) {
-	otel.SetTextMapPropagator(propagation.TraceContext{})
-	if os.Getenv("OTEL_TRACES_EXPORTER") != "stdout" {
-		return func(context.Context) error { return nil }, nil
-	}
-	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-	if err != nil {
-		return nil, err
-	}
-	provider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
-	otel.SetTracerProvider(provider)
-	return provider.Shutdown, nil
 }

@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, OpenTelemetry OTLP tracing through a local collector, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
 
 ## What is this product?
 
@@ -41,14 +41,14 @@ FulfillHub solves that by centralizing orchestration and explicitly designing fo
 
 ## Architecture overview
 
-The current implementation starts as a Go modular monolith with strongly isolated packages and asynchronous boundaries represented through a transactional outbox. The goal is to earn reliability and simplicity first, then add live k6 baselines and provider adapters behind the same contracts.
+The current implementation is a Go modular monolith with strongly isolated packages and asynchronous boundaries represented through a transactional outbox. Runtime dependencies are available through Docker Compose so reliability, observability, and performance evidence are measured against the same local topology.
 
 - HTTP API entrypoint for merchant and operations access
 - Domain modules for orders, inventory, payments, shipments, notifications, and reporting
 - In-memory store for fast local tests and PostgreSQL for transactional state, outbox, inbox, and audit logs when `DATABASE_URL` is configured
 - Transactional outbox events with a RabbitMQ relay for domain fan-out and asynchronous side effects
 - Redis-backed rate limiting when `REDIS_URL` is configured
-- OpenTelemetry, Prometheus, and Grafana for observability
+- OpenTelemetry Collector, Prometheus, and Grafana for observability
 
 More detail lives in [docs/architecture/overview.md](./docs/architecture/overview.md) and [docs/diagrams/system-context.md](./docs/diagrams/system-context.md).
 
@@ -60,7 +60,7 @@ More detail lives in [docs/architecture/overview.md](./docs/architecture/overvie
 | Primary database | PostgreSQL | ACID guarantees, locking semantics, and mature indexing for inventory and order workflows |
 | Messaging | RabbitMQ | Explicit routing keys, retry topologies, and predictable queue semantics |
 | Cache and controls | Redis | Fast rate-limiting counters and idempotency support |
-| Observability | OpenTelemetry, Prometheus, Grafana | Standard metrics, traces, dashboards, and correlation across sync and async flows |
+| Observability | OpenTelemetry Collector, Prometheus, Grafana | Standard metrics, traces, dashboards, and correlation across sync and async flows |
 | Load testing | k6 | Repeatable smoke, load, stress, and spike scenarios |
 | CI | GitHub Actions | Portable repository validation and later Go quality gates |
 
@@ -173,6 +173,7 @@ FulfillHub’s operational baseline includes:
 - OpenTelemetry outbox relay and RabbitMQ publish spans with AMQP `traceparent` headers
 - OpenTelemetry RabbitMQ consume spans with inbox idempotency and explicit acknowledgement outcomes
 - optional stdout trace export via `OTEL_TRACES_EXPORTER=stdout`
+- OTLP/HTTP trace export via `OTEL_TRACES_EXPORTER=otlp` and the Compose OpenTelemetry Collector
 - Prometheus-compatible request and error counters
 - Prometheus outbox backlog gauge for unpublished relay events
 - Prometheus RabbitMQ queue depth and consumer gauges when `RABBITMQ_URL` is configured
@@ -216,6 +217,7 @@ The most important architecture decisions are recorded in:
 - [docs/adr/0001-modular-monolith-first.md](./docs/adr/0001-modular-monolith-first.md)
 - [docs/adr/0002-rabbitmq-outbox-inbox.md](./docs/adr/0002-rabbitmq-outbox-inbox.md)
 - [docs/adr/0003-authentication-and-authorization.md](./docs/adr/0003-authentication-and-authorization.md)
+- [docs/adr/0004-local-otel-collector.md](./docs/adr/0004-local-otel-collector.md)
 
 ## How to run locally
 
@@ -233,6 +235,15 @@ Enable local OpenTelemetry span output with:
 
 ```sh
 OTEL_TRACES_EXPORTER=stdout go run ./cmd/fulfillhub-api
+```
+
+Export spans to an OTLP/HTTP collector with:
+
+```sh
+OTEL_TRACES_EXPORTER=otlp \
+OTEL_EXPORTER_OTLP_TRACES_ENDPOINT='http://localhost:4318/v1/traces' \
+OTEL_SERVICE_NAME='fulfillhub-api' \
+  go run ./cmd/fulfillhub-api
 ```
 
 Require signed operations JWTs with:
@@ -307,7 +318,8 @@ The replay command writes a durable `dlq.replay` audit log with queue, target
 routing key, replay limit, replayed count, status, and error details when a
 partial replay fails.
 
-Run the local infrastructure stack:
+Run the local infrastructure stack, including PostgreSQL, RabbitMQ, Redis,
+OpenTelemetry Collector, Prometheus, Grafana, the API, relay, and workers:
 
 ```sh
 docker compose up --build
@@ -316,7 +328,8 @@ docker compose up --build
 Host ports can be overridden when local services already use the defaults:
 
 ```sh
-POSTGRES_PORT=15432 API_PORT=18080 docker compose up --build
+POSTGRES_PORT=15432 API_PORT=18080 OTEL_COLLECTOR_OTLP_HTTP_PORT=14318 \
+  docker compose up --build
 ```
 
 Run the full repository validation:

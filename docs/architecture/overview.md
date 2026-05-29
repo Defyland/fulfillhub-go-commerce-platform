@@ -1,6 +1,6 @@
 # Architecture Overview
 
-FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store for fast tests, switches to PostgreSQL-backed order/outbox persistence when `DATABASE_URL` is configured, includes RabbitMQ relay and worker processes, and enables Redis-backed rate limiting when `REDIS_URL` is configured.
+FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store for fast tests, switches to PostgreSQL-backed order/outbox persistence when `DATABASE_URL` is configured, includes RabbitMQ relay and worker processes, enables Redis-backed rate limiting when `REDIS_URL` is configured, and exports OpenTelemetry traces to stdout or an OTLP collector when configured.
 
 ## System context
 
@@ -15,6 +15,7 @@ flowchart LR
   workers --> pg
   broker --> notifier["Notification workers"]
   api --> otel["OpenTelemetry collector"]
+  workers --> otel
   otel --> prom["Prometheus"]
   prom --> grafana["Grafana dashboards"]
 ```
@@ -60,7 +61,8 @@ Current status:
 - API request logs are structured JSON and include status, latency, request ID,
   correlation ID, actor type, and merchant ID when authenticated.
 - HTTP spans extract W3C `traceparent` headers and can be exported locally with
-  `OTEL_TRACES_EXPORTER=stdout`.
+  `OTEL_TRACES_EXPORTER=stdout` or to the Compose collector with
+  `OTEL_TRACES_EXPORTER=otlp`.
 - PostgreSQL-backed stores create spans for order, outbox, inbox, and audit-log
   persistence operations when request context reaches the store.
 - The outbox relay creates publish spans and injects W3C `traceparent` into
@@ -71,7 +73,7 @@ Current status:
 
 ## Deployment direction
 
-The full local stack should run via Docker Compose with:
+The full local stack runs via Docker Compose with:
 
 - one Go API container
 - one outbox relay container

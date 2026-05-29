@@ -2,9 +2,10 @@
 
 This repository applies the portfolio-wide engineering spec to a commerce
 orchestration domain. The current state includes an executable Go API slice,
-PostgreSQL persistence, RabbitMQ outbox relay code, Redis rate limiting, inbox
-idempotency, DLQ replay tooling, provider adapters, k6 scripts, measured
-results, Compose smoke/load/stress/spike profiling, Grafana dashboard definition, product
+PostgreSQL persistence, RabbitMQ outbox relay code, Redis rate limiting,
+OpenTelemetry OTLP tracing through a local collector, inbox idempotency, DLQ
+replay tooling, provider adapters, k6 scripts, measured results, Compose
+smoke/load/stress/spike profiling, Grafana dashboard definition, product
 narrative, architecture decisions, contracts, quality gates, and operational
 expectations.
 
@@ -24,6 +25,7 @@ expectations.
 - Go API runtime under `cmd/fulfillhub-api`
 - Go domain and HTTP tests under `internal/`
 - Docker build definition in `Dockerfile`
+- OpenTelemetry Collector config in `deployments/otel-collector/`
 
 ## FulfillHub-specific engineering commitments
 
@@ -42,6 +44,7 @@ The current executable slice includes:
 - HTTP order creation, lookup, and cancellation handlers
 - health, readiness, and metrics endpoints
 - structured HTTP request logs plus OpenTelemetry HTTP, SQL, RabbitMQ publish, and RabbitMQ consume spans
+- shared tracing configuration with disabled, stdout, and OTLP/HTTP exporter modes
 - in-memory order store and outbox event recording
 - embedded PostgreSQL migrations and SQL-backed order/outbox/audit persistence
 - RabbitMQ publisher topology and outbox relay process

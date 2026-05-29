@@ -1,8 +1,8 @@
 # Compose Profiling Harness
 
 The Compose profiling harness runs the API, PostgreSQL, RabbitMQ, Redis,
-outbox relay, and workers together, then captures resource and queue telemetry
-around the k6 scenarios.
+OpenTelemetry Collector, outbox relay, and workers together, then captures
+resource and queue telemetry around the k6 scenarios.
 
 ## Command
 
@@ -34,6 +34,7 @@ with:
 
 - Docker version and rendered Compose config
 - Docker container CPU and memory snapshots
+- OpenTelemetry Collector service wiring and OTLP exporter environment
 - API `/metrics` snapshots, including RabbitMQ queue gauges
 - RabbitMQ queue state from the management API
 - Redis memory information

@@ -12,6 +12,7 @@ cmd/fulfillhub-dlq-replay
 cmd/fulfillhub-outbox-relay
 cmd/fulfillhub-worker
 deployments
+deployments/otel-collector
 deployments/prometheus
 internal
 internal/api
@@ -56,6 +57,7 @@ cmd/fulfillhub-dlq-replay/main.go
 cmd/fulfillhub-outbox-relay/main.go
 cmd/fulfillhub-worker/main.go
 deployments/prometheus/prometheus.yml
+deployments/otel-collector/config.yml
 internal/api/server.go
 internal/api/server_test.go
 internal/commerce/model.go
@@ -71,6 +73,8 @@ internal/messaging/rabbitmq_integration_test.go
 internal/messaging/relay.go
 internal/messaging/relay_test.go
 internal/messaging/topology.go
+internal/observability/tracing.go
+internal/observability/tracing_test.go
 internal/postgres/migrations.go
 internal/postgres/migrations_test.go
 internal/postgres/store.go
@@ -98,6 +102,7 @@ docs/runbooks/incident-response.md
 docs/adr/0001-modular-monolith-first.md
 docs/adr/0002-rabbitmq-outbox-inbox.md
 docs/adr/0003-authentication-and-authorization.md
+docs/adr/0004-local-otel-collector.md
 benchmarks/baseline.md
 benchmarks/k6/smoke.js
 benchmarks/k6/load.js

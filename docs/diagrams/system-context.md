@@ -23,4 +23,7 @@ flowchart LR
   prometheus --> grafana["Grafana"]
 ```
 
-This diagram represents the intended Phase 1 shape. It is architecture guidance, not an implemented topology yet.
+This diagram matches the local Compose topology: the API, relay, and workers run
+as Go containers, PostgreSQL owns durable state, Redis backs rate limiting,
+RabbitMQ carries domain events, the OpenTelemetry Collector receives OTLP
+traces, and Prometheus/Grafana expose the operational metrics baseline.

@@ -11,11 +11,8 @@ import (
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/fulfillment"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/observability"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
-	"go.opentelemetry.io/otel/propagation"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 type settings struct {
@@ -27,7 +24,7 @@ type settings struct {
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	shutdownTracing, err := configureTracing(logger)
+	shutdownTracing, err := observability.ConfigureTracing(context.Background(), "fulfillhub-worker", os.Getenv, logger)
 	if err != nil {
 		fatal(logger, "configure tracing", err)
 	}
@@ -148,21 +145,6 @@ func loadSettings() (settings, error) {
 		cfg.consumerName = cfg.queue
 	}
 	return cfg, nil
-}
-
-func configureTracing(logger *slog.Logger) (func(context.Context) error, error) {
-	otel.SetTextMapPropagator(propagation.TraceContext{})
-	if os.Getenv("OTEL_TRACES_EXPORTER") != "stdout" {
-		return func(context.Context) error { return nil }, nil
-	}
-	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-	if err != nil {
-		return nil, err
-	}
-	provider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
-	otel.SetTracerProvider(provider)
-	logger.Info("otel tracing enabled", "exporter", "stdout")
-	return provider.Shutdown, nil
 }
 
 func fatal(logger *slog.Logger, message string, err error) {

@@ -1,8 +1,14 @@
+x-otel-env: &otel-env
+  OTEL_TRACES_EXPORTER: "${OTEL_TRACES_EXPORTER:-otlp}"
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-http://otel-collector:4318/v1/traces}"
+
 services:
   api:
     build: .
     command: ["/app/fulfillhub-api"]
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-api
       HTTP_ADDR: ":8080"
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       REDIS_URL: redis://redis:6379/0
@@ -17,11 +23,15 @@ services:
         condition: service_started
       rabbitmq:
         condition: service_started
+      otel-collector:
+        condition: service_started
 
   outbox-relay:
     build: .
     command: ["/app/fulfillhub-outbox-relay"]
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-outbox-relay
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       OUTBOX_RELAY_BATCH_SIZE: "${OUTBOX_RELAY_BATCH_SIZE:-1000}"
@@ -31,11 +41,15 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+      otel-collector:
+        condition: service_started
 
   inventory-worker:
     build: .
     command: ["/app/fulfillhub-worker"]
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-inventory-worker
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       WORKER_QUEUE: inventory.reserve
@@ -45,11 +59,15 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+      otel-collector:
+        condition: service_started
 
   payments-worker:
     build: .
     command: ["/app/fulfillhub-worker"]
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-payments-worker
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       WORKER_QUEUE: payments.authorize
@@ -59,11 +77,15 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+      otel-collector:
+        condition: service_started
 
   shipments-worker:
     build: .
     command: ["/app/fulfillhub-worker"]
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-shipments-worker
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       WORKER_QUEUE: shipments.create
@@ -73,11 +95,15 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+      otel-collector:
+        condition: service_started
 
   orders-finalizer:
     build: .
     command: ["/app/fulfillhub-worker"]
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-orders-finalizer
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       WORKER_QUEUE: orders.finalize
@@ -87,11 +113,15 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+      otel-collector:
+        condition: service_started
 
   notifications-worker:
     build: .
     command: ["/app/fulfillhub-worker"]
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-notifications-worker
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       WORKER_QUEUE: notifications.email
@@ -101,11 +131,15 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_started
+      otel-collector:
+        condition: service_started
 
   compensation-worker:
     build: .
     command: ["/app/fulfillhub-worker"]
     environment:
+      <<: *otel-env
+      OTEL_SERVICE_NAME: fulfillhub-compensation-worker
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       WORKER_QUEUE: orders.compensate
@@ -114,6 +148,8 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_started
+      otel-collector:
         condition: service_started
 
   postgres:
@@ -147,6 +183,15 @@ services:
     image: redis:7-alpine
     ports:
       - "${REDIS_PORT:-6379}:6379"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.126.0
+    command: ["--config=/etc/otelcol/config.yml"]
+    volumes:
+      - ./deployments/otel-collector/config.yml:/etc/otelcol/config.yml:ro
+    ports:
+      - "${OTEL_COLLECTOR_OTLP_GRPC_PORT:-4317}:4317"
+      - "${OTEL_COLLECTOR_OTLP_HTTP_PORT:-4318}:4318"
 
   prometheus:
     image: prom/prometheus:v2.54.1
