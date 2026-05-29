@@ -53,6 +53,7 @@ The current executable slice includes:
 - RabbitMQ consumer primitive with inbox deduplication, retry scheduling, and explicit ack/nack behavior
 - fulfillment worker executable with durable inventory, payment, shipment, notification, compensation, and order-completion projections
 - cancellation worker path from `order.cancel_requested` to `order.cancelled`
+- notification worker path for order completion, cancellation, and fulfillment failure events
 - inventory reservation failure projection through transactional `inventory.rejected` events
 - payment authorization failure projection through transactional `payment.failed` events
 - shipment provider failure projection through transactional `shipment.failed` events

@@ -123,14 +123,23 @@ func queueNotification(ctx context.Context, deps Dependencies, event commerce.Ou
 	if deps.Projector == nil {
 		return fmt.Errorf("fulfillment projector is required")
 	}
-	if event.EventType != "order.completed" && event.EventType != "order.cancelled" {
-		return fmt.Errorf("expected order.completed or order.cancelled event, got %s", event.EventType)
+	if !isNotificationEvent(event.EventType) {
+		return fmt.Errorf("expected notifiable event, got %s", event.EventType)
 	}
 	if err := validateEventIdentity(event); err != nil {
 		return err
 	}
 	now := deps.Clock()
 	return deps.Projector.RecordNotificationQueued(ctx, event, systemAudit(event, "notification.email_queued", now))
+}
+
+func isNotificationEvent(eventType string) bool {
+	switch eventType {
+	case "order.completed", "order.cancelled", "inventory.rejected", "payment.failed", "shipment.failed":
+		return true
+	default:
+		return false
+	}
 }
 
 func compensationPlan(eventType string) (commerce.OrderStatus, string, error) {

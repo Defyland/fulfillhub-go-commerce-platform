@@ -51,6 +51,18 @@ func TestQueueTopologiesRouteCancellationRequests(t *testing.T) {
 	}
 }
 
+func TestQueueTopologiesRouteFailureNotifications(t *testing.T) {
+	topology, ok := findTopology(NotificationsEmailQueue)
+	if !ok {
+		t.Fatal("notifications queue topology missing")
+	}
+	for _, routingKey := range []string{"inventory.rejected", "payment.failed", "shipment.failed"} {
+		if !contains(topology.RoutingKeys, routingKey) {
+			t.Fatalf("notifications routing keys = %v, want %s", topology.RoutingKeys, routingKey)
+		}
+	}
+}
+
 func findTopology(queue string) (QueueTopology, bool) {
 	for _, topology := range QueueTopologies() {
 		if topology.Queue == queue {

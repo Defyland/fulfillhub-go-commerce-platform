@@ -115,7 +115,7 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
 - Order finalizer consumes shipment creation, durably marks the order `completed`, and writes `order.completed` to the outbox
 - Order cancellation worker consumes `order.cancel_requested`, durably marks
   the order `cancelled`, and writes `order.cancelled` to the outbox
-- Notification worker consumes order completion or cancellation and records a durable email notification projection
+- Notification worker consumes order completion, cancellation, or fulfillment failure events and records a durable email notification projection
 - Compensation worker consumes inventory, payment, or shipment failure events and records durable compensation outcomes
 - Consumer idempotency is modeled through inbox deduplication, bounded retry
   queues, and DLQ routing in the RabbitMQ topology

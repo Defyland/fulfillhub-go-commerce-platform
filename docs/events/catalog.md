@@ -16,9 +16,9 @@
 | `inventory.reserved` | Inventory | Payments, analytics |
 | `inventory.rejected` | Inventory | Orders, notifications |
 | `payment.authorized` | Payments | Shipments, analytics |
-| `payment.failed` | Payments | Orders, inventory release |
+| `payment.failed` | Payments | Orders, inventory release, notifications |
 | `shipment.created` | Shipments | Orders, notifications |
-| `shipment.failed` | Shipments | Orders, payments |
+| `shipment.failed` | Shipments | Orders, payments, notifications |
 | `order.cancel_requested` | Orders | Orders |
 | `order.completed` | Orders | Notifications, analytics |
 | `order.cancelled` | Orders | Notifications, analytics |
@@ -33,7 +33,7 @@
 | `orders.finalize` | `shipment.created` | `orders.finalize.retry.15s` | `orders.finalize.dlq` |
 | `orders.cancel` | `order.cancel_requested` | `orders.cancel.retry.15s` | `orders.cancel.dlq` |
 | `orders.compensate` | `inventory.rejected`, `payment.failed`, `shipment.failed` | `orders.compensate.retry.15s` | `orders.compensate.dlq` |
-| `notifications.email` | `order.completed`, `order.cancelled` | `notifications.email.retry.60s` | `notifications.email.dlq` |
+| `notifications.email` | `order.completed`, `order.cancelled`, `inventory.rejected`, `payment.failed`, `shipment.failed` | `notifications.email.retry.60s` | `notifications.email.dlq` |
 
 ## Delivery rules
 
@@ -80,8 +80,8 @@
   `order.completed` through the transactional outbox.
 - The order cancellation worker updates the order to `cancelled` and writes
   `order.cancelled` through the transactional outbox.
-- The notification worker records durable email queueing projections for
-  `order.completed` and `order.cancelled`.
+- The notification worker records durable email queueing projections for order
+  completion, cancellation, and fulfillment failure events.
 - The compensation worker records durable failure projections for
   `inventory.rejected`, `payment.failed`, and `shipment.failed`.
 - `TestRabbitPublisherIntegration` verifies live RabbitMQ publish and route delivery when `RABBITMQ_URL` is available.
