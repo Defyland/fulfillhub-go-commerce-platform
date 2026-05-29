@@ -112,7 +112,7 @@ Symptoms:
 
 - `shipment.failed` events appear after `payment.authorized`
 - compensation worker records `compensation.shipment_failed`
-- affected orders move to `cancellation_pending` for manual review
+- affected orders move to `manual_review` for manual review
 - authorized payment rows move to `voided`
 - reserved stock rows move to `released`
 

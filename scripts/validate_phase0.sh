@@ -20,6 +20,7 @@ internal/commerce
 internal/messaging
 internal/postgres
 internal/providers
+internal/spec
 docs/adr
 docs/api
 docs/architecture
@@ -92,6 +93,7 @@ internal/postgres/migrations/010_demo_inventory_seed.sql
 internal/providers/payment.go
 internal/providers/providers_test.go
 internal/providers/shipment.go
+internal/spec/consistency_test.go
 docs/engineering-baseline.md
 docs/api/request-response-examples.md
 docs/api/error-format.md
