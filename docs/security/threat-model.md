@@ -27,7 +27,7 @@
 - Create-order requests require `Idempotency-Key` and reject duplicate external order IDs per merchant.
 - Redis-backed rate limiting protects write traffic when enabled.
 - Structured logs include request and correlation IDs without logging payment tokens.
-- HTTP spans propagate W3C `traceparent` for incident correlation.
+- HTTP and RabbitMQ publish spans propagate W3C `traceparent` for incident correlation.
 - `order.create` and `order.cancel_requested` audit logs are written with actor and correlation metadata.
 - DLQ replay requires `DATABASE_URL` and `OPS_ACTOR_ID`, then records durable
   `dlq.replay` audit details for success and failure attempts.
@@ -38,5 +38,5 @@
 
 - Production deployments still need issuer, audience, and key-rotation policy for operations JWTs.
 - `/metrics` is unauthenticated in the local slice and should be network-restricted in production.
-- SQL and RabbitMQ spans are not implemented yet.
+- SQL spans and RabbitMQ consume spans are not implemented yet.
 - Compose-backed performance runs still need CPU, memory, queue-depth, and Redis limiter telemetry.

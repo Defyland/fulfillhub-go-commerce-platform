@@ -164,6 +164,7 @@ FulfillHub’s operational baseline includes:
 - structured JSON logs for every API request
 - `request_id`, `correlation_id`, actor type, and merchant metadata in request logs
 - OpenTelemetry HTTP spans with W3C `traceparent` propagation
+- OpenTelemetry outbox relay and RabbitMQ publish spans with AMQP `traceparent` headers
 - optional stdout trace export via `OTEL_TRACES_EXPORTER=stdout`
 - Prometheus-compatible request and error counters
 - `/healthz` liveness and `/readyz` readiness endpoints
@@ -171,8 +172,8 @@ FulfillHub’s operational baseline includes:
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
 - dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
 
-SQL spans, RabbitMQ publish/consume spans, and queue lag gauges are the next
-observability expansion after the HTTP runtime baseline.
+SQL spans, RabbitMQ consume spans, and queue lag gauges are the next
+observability expansion after the HTTP and publish-path runtime baseline.
 
 ## Security considerations
 
@@ -248,6 +249,7 @@ Run the outbox relay when PostgreSQL and RabbitMQ are available:
 ```sh
 DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \
 RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
+OTEL_TRACES_EXPORTER='stdout' \
   go run ./cmd/fulfillhub-outbox-relay
 ```
 

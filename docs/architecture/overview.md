@@ -56,6 +56,8 @@ Current status:
   correlation ID, actor type, and merchant ID when authenticated.
 - HTTP spans extract W3C `traceparent` headers and can be exported locally with
   `OTEL_TRACES_EXPORTER=stdout`.
+- The outbox relay creates publish spans and injects W3C `traceparent` into
+  RabbitMQ message headers.
 - Future queue consumers continue the trace and record handler latency and acknowledgement outcome.
 - Dashboards highlight queue depth, saga completion rate, compensation rate, and readiness status.
 

@@ -10,9 +10,25 @@ import (
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/postgres"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func main() {
+	shutdownTracing, err := configureTracing()
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := shutdownTracing(ctx); err != nil {
+			log.Printf("shutdown tracing: %v", err)
+		}
+	}()
+
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
 		log.Fatal("DATABASE_URL is required")
@@ -59,4 +75,18 @@ func main() {
 		case <-ticker.C:
 		}
 	}
+}
+
+func configureTracing() (func(context.Context) error, error) {
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	if os.Getenv("OTEL_TRACES_EXPORTER") != "stdout" {
+		return func(context.Context) error { return nil }, nil
+	}
+	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	if err != nil {
+		return nil, err
+	}
+	provider := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exporter))
+	otel.SetTracerProvider(provider)
+	return provider.Shutdown, nil
 }

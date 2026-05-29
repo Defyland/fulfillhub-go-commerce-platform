@@ -8,6 +8,11 @@ import (
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type RabbitPublisher struct {
@@ -43,23 +48,76 @@ func (p *RabbitPublisher) Close() error {
 }
 
 func (p *RabbitPublisher) Publish(ctx context.Context, event commerce.OutboxEvent) error {
+	ctx, span := messagingTracer().Start(ctx, "rabbitmq.publish", trace.WithAttributes(
+		attribute.String("messaging.system", "rabbitmq"),
+		attribute.String("messaging.destination.name", DomainExchange),
+		attribute.String("messaging.rabbitmq.routing_key", RoutingKey(event.EventType)),
+		attribute.String("messaging.message.id", event.MessageID),
+		attribute.String("fulfillhub.event_type", event.EventType),
+		attribute.String("fulfillhub.correlation_id", event.CorrelationID),
+		attribute.String("fulfillhub.order_id", event.OrderID),
+		attribute.String("fulfillhub.merchant_id", event.MerchantID),
+	))
+	defer span.End()
+
 	body, err := json.Marshal(event)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "marshal event")
 		return fmt.Errorf("marshal event: %w", err)
 	}
-	return p.channel.PublishWithContext(ctx, DomainExchange, RoutingKey(event.EventType), false, false, amqp.Publishing{
+	headers := amqp.Table{
+		"merchant_id": event.MerchantID,
+		"order_id":    event.OrderID,
+	}
+	injectTraceHeaders(ctx, headers)
+	if err := p.channel.PublishWithContext(ctx, DomainExchange, RoutingKey(event.EventType), false, false, amqp.Publishing{
 		ContentType:   "application/json",
 		DeliveryMode:  amqp.Persistent,
 		MessageId:     event.MessageID,
 		CorrelationId: event.CorrelationID,
 		Timestamp:     time.Now().UTC(),
 		Type:          event.EventType,
-		Headers: amqp.Table{
-			"merchant_id": event.MerchantID,
-			"order_id":    event.OrderID,
-		},
-		Body: body,
-	})
+		Headers:       headers,
+		Body:          body,
+	}); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "publish rabbitmq message")
+		return err
+	}
+	return nil
+}
+
+func injectTraceHeaders(ctx context.Context, headers amqp.Table) {
+	propagation.TraceContext{}.Inject(ctx, amqpHeaderCarrier{headers: headers})
+}
+
+type amqpHeaderCarrier struct {
+	headers amqp.Table
+}
+
+func (c amqpHeaderCarrier) Get(key string) string {
+	value, ok := c.headers[key]
+	if !ok {
+		return ""
+	}
+	text, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return text
+}
+
+func (c amqpHeaderCarrier) Set(key, value string) {
+	c.headers[key] = value
+}
+
+func (c amqpHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c.headers))
+	for key := range c.headers {
+		keys = append(keys, key)
+	}
+	return keys
 }
 
 func DeclareTopology(channel *amqp.Channel) error {
@@ -90,4 +148,8 @@ func DeclareTopology(channel *amqp.Channel) error {
 		}
 	}
 	return nil
+}
+
+func messagingTracer() trace.Tracer {
+	return otel.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging")
 }
