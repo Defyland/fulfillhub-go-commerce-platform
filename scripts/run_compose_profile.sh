@@ -69,20 +69,27 @@ wait_for_api() {
 }
 
 wait_for_async_drain() {
-  label=$1
-  deadline=$(($(date +%s) + DRAIN_TIMEOUT_SECONDS))
-  while [ "$(date +%s)" -lt "$deadline" ]; do
-    metrics=$(curl -fsS "$BASE_URL/metrics" 2>/dev/null || true)
-    outbox=$(printf '%s\n' "$metrics" | awk '$1 == "fulfillhub_outbox_unpublished_total" { print int($2); found = 1 } END { if (!found) print -1 }')
-    queued=$(printf '%s\n' "$metrics" | awk '$1 ~ /^fulfillhub_rabbitmq_queue_messages_ready/ { sum += $2 } END { print sum + 0 }')
-    if [ "$outbox" -eq 0 ] && [ "$queued" -eq 0 ]; then
-      return 0
-    fi
-    sleep 2
-  done
-  echo "async drain did not complete for $label after ${DRAIN_TIMEOUT_SECONDS}s" >&2
-  echo "last outbox backlog: $outbox; last queued RabbitMQ messages: $queued" >&2
-  exit 1
+	label=$1
+	deadline=$(($(date +%s) + DRAIN_TIMEOUT_SECONDS))
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		metrics=$(curl -fsS "$BASE_URL/metrics" 2>/dev/null || true)
+		outbox=$(printf '%s\n' "$metrics" | awk '$1 == "fulfillhub_outbox_unpublished_total" { print int($2); found = 1 } END { if (!found) print -1 }')
+		queue_state=$(docker compose exec -T rabbitmq rabbitmqctl -q list_queues name messages_ready messages_unacknowledged 2>/dev/null || true)
+		if [ -z "$queue_state" ]; then
+			queued=-1
+			unacked=-1
+		else
+			queued=$(printf '%s\n' "$queue_state" | awk 'NF >= 3 { sum += $2 } END { print sum + 0 }')
+			unacked=$(printf '%s\n' "$queue_state" | awk 'NF >= 3 { sum += $3 } END { print sum + 0 }')
+		fi
+		if [ "$outbox" -eq 0 ] && [ "$queued" -eq 0 ] && [ "$unacked" -eq 0 ]; then
+			return 0
+		fi
+		sleep 2
+	done
+	echo "async drain did not complete for $label after ${DRAIN_TIMEOUT_SECONDS}s" >&2
+	echo "last outbox backlog: $outbox; last queued RabbitMQ messages: $queued; last unacknowledged RabbitMQ messages: $unacked" >&2
+	exit 1
 }
 
 snapshot() {
@@ -146,8 +153,8 @@ cat >"$RESULT_DIR/README.md" <<EOF
 
 Captured artifacts include Docker stats, API Prometheus metrics, RabbitMQ queue
 state, Redis memory info, PostgreSQL activity, k6 logs, k6 summary exports, and
-post-scenario snapshots taken only after unpublished outbox and ready queue
-metrics drain to zero.
+post-scenario snapshots taken only after unpublished outbox, ready queue, and
+unacknowledged queue metrics drain to zero.
 EOF
 
 echo "compose profiling artifacts written to $RESULT_DIR"

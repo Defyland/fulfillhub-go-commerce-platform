@@ -15,8 +15,8 @@ the Compose stack running after the script exits. The harness sets
 `RATE_LIMIT_PER_MINUTE=60000` by default so latency profiling is not dominated
 by the operational Redis write quota; override it lower when intentionally
 profiling limiter rejections. It also waits up to `DRAIN_TIMEOUT_SECONDS=60`
-for unpublished outbox events and ready RabbitMQ messages to drain before
-taking post-scenario snapshots.
+for unpublished outbox events plus ready and unacknowledged RabbitMQ messages
+to drain before taking post-scenario snapshots.
 
 When local services already occupy the default host ports, override only the
 host bindings. Internal container URLs remain unchanged:
@@ -38,7 +38,7 @@ with:
 - RabbitMQ queue state from the management API
 - Redis memory information
 - PostgreSQL activity counters
-- post-scenario snapshots after outbox and queue drain
+- post-scenario snapshots after outbox plus ready and unacknowledged queue drain
 - k6 logs and summary exports for each selected scenario
 
 ## Current Status
