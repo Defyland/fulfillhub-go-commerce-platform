@@ -7,15 +7,16 @@ services:
       DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
       REDIS_URL: redis://redis:6379/0
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-120}"
     ports:
-      - "8080:8080"
+      - "${API_PORT:-8080}:8080"
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
       rabbitmq:
-        condition: service_healthy
+        condition: service_started
 
   outbox-relay:
     build: .
@@ -27,7 +28,7 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
-        condition: service_healthy
+        condition: service_started
 
   inventory-worker:
     build: .
@@ -41,7 +42,7 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
-        condition: service_healthy
+        condition: service_started
 
   payments-worker:
     build: .
@@ -55,7 +56,7 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
-        condition: service_healthy
+        condition: service_started
 
   shipments-worker:
     build: .
@@ -69,7 +70,7 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
-        condition: service_healthy
+        condition: service_started
 
   orders-finalizer:
     build: .
@@ -83,7 +84,35 @@ services:
       postgres:
         condition: service_healthy
       rabbitmq:
+        condition: service_started
+
+  notifications-worker:
+    build: .
+    command: ["/app/fulfillhub-worker"]
+    environment:
+      DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      WORKER_QUEUE: notifications.email
+      CONSUMER_NAME: notifications-worker
+    depends_on:
+      postgres:
         condition: service_healthy
+      rabbitmq:
+        condition: service_started
+
+  compensation-worker:
+    build: .
+    command: ["/app/fulfillhub-worker"]
+    environment:
+      DATABASE_URL: postgres://fulfillhub:postgres@postgres:5432/fulfillhub?sslmode=disable
+      RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+      WORKER_QUEUE: orders.compensate
+      CONSUMER_NAME: compensation-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_started
 
   postgres:
     image: postgres:16-alpine
@@ -92,42 +121,44 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: fulfillhub
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U fulfillhub -d fulfillhub"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   rabbitmq:
     image: rabbitmq:3.13-management-alpine
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
 
   prometheus:
     image: prom/prometheus:v2.54.1
     volumes:
       - ./deployments/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     ports:
-      - "9090:9090"
+      - "${PROMETHEUS_PORT:-9090}:9090"
     depends_on:
       - api
 
   grafana:
     image: grafana/grafana:11.1.4
     ports:
-      - "3000:3000"
+      - "${GRAFANA_PORT:-3000}:3000"
     volumes:
       - ./docs/observability/grafana-dashboard.json:/var/lib/grafana/dashboards/fulfillhub.json:ro
     depends_on:

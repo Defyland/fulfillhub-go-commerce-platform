@@ -56,7 +56,7 @@ func main() {
 		fatal(logger, "run postgres migrations", err)
 	}
 
-	rabbitConsumer, err := messaging.NewRabbitConsumer(cfg.rabbitURL)
+	rabbitConsumer, err := newRabbitConsumerWithRetry(ctx, cfg.rabbitURL, logger)
 	if err != nil {
 		fatal(logger, "create rabbit consumer", err)
 	}
@@ -101,6 +101,29 @@ func main() {
 					"routing_key", delivery.RoutingKey,
 				)
 			}
+		}
+	}
+}
+
+func newRabbitConsumerWithRetry(ctx context.Context, rabbitURL string, logger *slog.Logger) (*messaging.RabbitConsumer, error) {
+	deadline := time.NewTimer(60 * time.Second)
+	defer deadline.Stop()
+
+	var lastErr error
+	for {
+		consumer, err := messaging.NewRabbitConsumer(rabbitURL)
+		if err == nil {
+			return consumer, nil
+		}
+		lastErr = err
+		logger.Warn("rabbitmq consumer unavailable, retrying", "error", err)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-deadline.C:
+			return nil, lastErr
+		case <-time.After(2 * time.Second):
 		}
 	}
 }

@@ -3,9 +3,10 @@
 This repository applies the portfolio-wide engineering spec to a commerce
 orchestration domain. The current state includes an executable Go API slice,
 PostgreSQL persistence, RabbitMQ outbox relay code, Redis rate limiting, inbox
-idempotency, DLQ replay tooling, provider adapters, k6 scripts and measured
-results, Grafana dashboard definition, product narrative, architecture
-decisions, contracts, quality gates, and operational expectations.
+idempotency, DLQ replay tooling, provider adapters, k6 scripts, measured
+results, Compose smoke profiling, Grafana dashboard definition, product
+narrative, architecture decisions, contracts, quality gates, and operational
+expectations.
 
 ## Required artifacts in this repository
 
@@ -53,12 +54,13 @@ The current executable slice includes:
 - payment and shipment provider adapter interfaces
 - k6 smoke, load, stress, and spike scripts
 - measured k6 smoke, load, stress, and spike results
+- measured Compose smoke profiling with outbox and queue drain
 - Grafana dashboard definition
 - unit, request, authorization, validation, audit, worker, integration, race, and native benchmark coverage
 
 It intentionally does not include yet:
 
-- compose-backed CPU, memory, and Redis limiter profiling
+- compose-backed load, stress, and spike CPU, memory, and Redis limiter profiling
 
-The next phase must run the measured performance matrix against the full Docker
-Compose stack.
+The next phase must run the longer measured performance matrix against the full
+Docker Compose stack.

@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed resource profiling remains the main pending performance artifact.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment/notification/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed load, stress, and spike profiling remain the main pending performance artifacts.
 
 ## What is this product?
 
@@ -139,8 +139,9 @@ The current implementation includes Go tests for:
 - RabbitMQ consumer trace propagation, inbox deduplication, and ack/nack behavior
 - fulfillment worker happy-path progression through durable inventory, payment, shipment, and order completion projections
 
-The remaining planned performance layer is compose-backed resource profiling for
-PostgreSQL, RabbitMQ, Redis, and API memory under the same k6 scenarios.
+The remaining planned performance layer is compose-backed load, stress, and
+spike resource profiling for PostgreSQL, RabbitMQ, Redis, and API memory under
+the same k6 scenarios.
 
 ## Performance benchmarks
 
@@ -158,9 +159,11 @@ process.
 - k6 load result: [benchmarks/results/2026-05-28-k6-load.md](./benchmarks/results/2026-05-28-k6-load.md)
 - k6 stress result: [benchmarks/results/2026-05-28-k6-stress.md](./benchmarks/results/2026-05-28-k6-stress.md)
 - k6 spike result: [benchmarks/results/2026-05-28-k6-spike.md](./benchmarks/results/2026-05-28-k6-spike.md)
+- Compose smoke result: [benchmarks/results/2026-05-29-compose-smoke.md](./benchmarks/results/2026-05-29-compose-smoke.md)
 
-The current k6 numbers are not a substitute for a Docker Compose run with
-database, broker, cache, CPU, and memory telemetry enabled.
+The current in-memory load, stress, and spike numbers are not a substitute for
+Docker Compose runs with database, broker, cache, CPU, and memory telemetry
+enabled.
 
 ## Observability
 
@@ -181,8 +184,9 @@ FulfillHub’s operational baseline includes:
 - Grafana dashboards for checkout throughput, saga outcomes, queue depth, and retry volume
 - dashboard definition in [docs/observability/grafana-dashboard.json](./docs/observability/grafana-dashboard.json)
 
-Compose-backed resource measurements remain the next observability expansion
-after the HTTP, SQL, RabbitMQ, publish-path, and consume-path runtime baseline.
+Compose-backed smoke resource measurements are included; load, stress, and
+spike resource measurements remain the next observability expansion after the
+HTTP, SQL, RabbitMQ, publish-path, and consume-path runtime baseline.
 
 ## Security considerations
 
@@ -251,10 +255,13 @@ DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=d
   go run ./cmd/fulfillhub-api
 ```
 
-To enable Redis-backed write rate limiting, provide `REDIS_URL`.
+To enable Redis-backed write rate limiting, provide `REDIS_URL`. The default
+limit is `120` writes per merchant per minute and can be changed with
+`RATE_LIMIT_PER_MINUTE`.
 
 ```sh
-REDIS_URL='redis://localhost:6379/0' go run ./cmd/fulfillhub-api
+REDIS_URL='redis://localhost:6379/0' RATE_LIMIT_PER_MINUTE=600 \
+  go run ./cmd/fulfillhub-api
 ```
 
 To expose RabbitMQ queue gauges on `/metrics`, provide `RABBITMQ_URL`.
@@ -302,6 +309,12 @@ Run the local infrastructure stack:
 
 ```sh
 docker compose up --build
+```
+
+Host ports can be overridden when local services already use the defaults:
+
+```sh
+POSTGRES_PORT=15432 API_PORT=18080 docker compose up --build
 ```
 
 Run the full repository validation:

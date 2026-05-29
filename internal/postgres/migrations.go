@@ -12,7 +12,36 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-func RunMigrations(ctx context.Context, db *sql.DB) error {
+const migrationAdvisoryLockID int64 = 7142026052901
+
+type migrationExecutor interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func RunMigrations(ctx context.Context, db *sql.DB) (err error) {
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		return fmt.Errorf("open migration connection: %w", err)
+	}
+	defer conn.Close()
+	return runMigrations(ctx, conn)
+}
+
+func runMigrations(ctx context.Context, db migrationExecutor) (err error) {
+	if _, err := db.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrationAdvisoryLockID); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() {
+		if _, unlockErr := db.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, migrationAdvisoryLockID); unlockErr != nil && err == nil {
+			err = fmt.Errorf("release migration lock: %w", unlockErr)
+		}
+	}()
+
+	if err := ensureSchemaMigrations(ctx, db); err != nil {
+		return err
+	}
+
 	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
 		return fmt.Errorf("read migrations: %w", err)
@@ -51,11 +80,14 @@ func RunMigrations(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func migrationApplied(ctx context.Context, db *sql.DB, version string) (bool, error) {
+func ensureSchemaMigrations(ctx context.Context, db migrationExecutor) error {
 	if _, err := db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`); err != nil {
-		return false, fmt.Errorf("ensure schema_migrations: %w", err)
+		return fmt.Errorf("ensure schema_migrations: %w", err)
 	}
+	return nil
+}
 
+func migrationApplied(ctx context.Context, db migrationExecutor, version string) (bool, error) {
 	var exists bool
 	if err := db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`, version).Scan(&exists); err != nil {
 		return false, fmt.Errorf("check migration %s: %w", version, err)

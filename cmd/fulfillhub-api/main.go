@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,7 +66,9 @@ func main() {
 		options.OutboxBacklog = outboxBacklog
 	}
 	if rabbitURL := os.Getenv("RABBITMQ_URL"); rabbitURL != "" {
-		inspector, err := messaging.NewQueueInspector(rabbitURL, nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		inspector, err := newQueueInspectorWithRetry(ctx, rabbitURL, logger)
+		cancel()
 		if err != nil {
 			logger.Error("create rabbitmq queue metrics inspector", "error", err)
 			options.QueueMetrics = messaging.UnavailableQueueMetrics{Err: err}
@@ -85,7 +89,11 @@ func main() {
 			fatal(logger, "ping redis", err)
 		}
 		cancel()
-		options.RateLimiter = ratelimit.NewRedisLimiter(client, 120, time.Minute)
+		limit, err := rateLimitPerMinute(os.Getenv)
+		if err != nil {
+			fatal(logger, "load redis rate limit", err)
+		}
+		options.RateLimiter = ratelimit.NewRedisLimiter(client, limit, time.Minute)
 	}
 
 	service := commerce.NewService(store)
@@ -94,6 +102,24 @@ func main() {
 	logger.Info("starting fulfillhub api", "addr", addr)
 	if err := http.ListenAndServe(addr, server); err != nil {
 		fatal(logger, "api server stopped", err)
+	}
+}
+
+func newQueueInspectorWithRetry(ctx context.Context, rabbitURL string, logger *slog.Logger) (*messaging.QueueInspector, error) {
+	var lastErr error
+	for {
+		inspector, err := messaging.NewQueueInspector(rabbitURL, nil)
+		if err == nil {
+			return inspector, nil
+		}
+		lastErr = err
+		logger.Warn("rabbitmq queue metrics unavailable, retrying", "error", err)
+
+		select {
+		case <-ctx.Done():
+			return nil, lastErr
+		case <-time.After(2 * time.Second):
+		}
 	}
 }
 
@@ -119,6 +145,18 @@ func fatal(logger *slog.Logger, message string, err error) {
 		logger.Error(message)
 	}
 	os.Exit(1)
+}
+
+func rateLimitPerMinute(getenv func(string) string) (int64, error) {
+	value := strings.TrimSpace(getenv("RATE_LIMIT_PER_MINUTE"))
+	if value == "" {
+		return 120, nil
+	}
+	limit, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || limit <= 0 {
+		return 0, fmt.Errorf("RATE_LIMIT_PER_MINUTE must be a positive integer")
+	}
+	return limit, nil
 }
 
 func splitCSV(value string) []string {

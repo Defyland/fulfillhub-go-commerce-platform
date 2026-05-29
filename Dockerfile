@@ -20,4 +20,4 @@ COPY --from=build /out/fulfillhub-outbox-relay /app/fulfillhub-outbox-relay
 COPY --from=build /out/fulfillhub-worker /app/fulfillhub-worker
 EXPOSE 8080
 
-ENTRYPOINT ["/app/fulfillhub-api"]
+CMD ["/app/fulfillhub-api"]

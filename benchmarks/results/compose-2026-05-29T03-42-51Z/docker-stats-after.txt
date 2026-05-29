@@ -1,0 +1,14 @@
+CONTAINER ID   NAME                                                     CPU %     MEM USAGE / LIMIT     MEM %     NET I/O           BLOCK I/O     PIDS
+add4b4c56c36   fulfillhub-go-commerce-platform-api-1                    0.00%     10.72MiB / 7.654GiB   0.14%     679kB / 1.2MB     0B / 0B       11
+128e07e40d75   fulfillhub-go-commerce-platform-compensation-worker-1    0.00%     5.047MiB / 7.654GiB   0.06%     10.5kB / 16.1kB   0B / 0B       8
+dceee5381b94   fulfillhub-go-commerce-platform-grafana-1                0.11%     71.57MiB / 7.654GiB   0.91%     25.4kB / 5.35kB   0B / 23MB     15
+3e27171b5663   fulfillhub-go-commerce-platform-inventory-worker-1       0.00%     7.746MiB / 7.654GiB   0.10%     454kB / 680kB     0B / 0B       9
+a452d623e111   fulfillhub-go-commerce-platform-notifications-worker-1   0.00%     7.816MiB / 7.654GiB   0.10%     763kB / 562kB     0B / 0B       9
+9c1cd0bec33c   fulfillhub-go-commerce-platform-orders-finalizer-1       0.00%     10.11MiB / 7.654GiB   0.13%     792kB / 694kB     0B / 0B       9
+1257a289a74a   fulfillhub-go-commerce-platform-outbox-relay-1           0.00%     8.527MiB / 7.654GiB   0.11%     489kB / 1.17MB    0B / 0B       11
+036b93bc048c   fulfillhub-go-commerce-platform-payments-worker-1        0.00%     7.781MiB / 7.654GiB   0.10%     455kB / 699kB     0B / 0B       10
+ba13cec8e13d   fulfillhub-go-commerce-platform-postgres-1               0.21%     50.49MiB / 7.654GiB   0.64%     4.54MB / 3.12MB   0B / 91.6MB   15
+aeac27f5e6fc   fulfillhub-go-commerce-platform-prometheus-1             0.05%     19.71MiB / 7.654GiB   0.25%     12.1kB / 2.3kB    0B / 16.4kB   10
+307bb9d834b2   fulfillhub-go-commerce-platform-rabbitmq-1               0.34%     140.9MiB / 7.654GiB   1.80%     1.01MB / 1.04MB   0B / 2.32MB   44
+98524f0d073a   fulfillhub-go-commerce-platform-redis-1                  0.69%     9.469MiB / 7.654GiB   0.12%     99.2kB / 33.1kB   0B / 0B       6
+240a08ba4e22   fulfillhub-go-commerce-platform-shipments-worker-1       0.00%     10.14MiB / 7.654GiB   0.13%     787kB / 798kB     0B / 0B       10

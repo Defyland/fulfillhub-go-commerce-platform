@@ -104,6 +104,7 @@ benchmarks/k6/load.js
 benchmarks/k6/stress.js
 benchmarks/k6/spike.js
 benchmarks/results/README.md
+benchmarks/results/2026-05-29-compose-smoke.md
 scripts/run_compose_profile.sh
 .github/workflows/phase0-quality.yml
 "

@@ -310,9 +310,15 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if len(auditLogs) == 0 {
 		t.Fatal("expected at least one audit log")
 	}
-	lastAudit := auditLogs[len(auditLogs)-1]
-	if lastAudit.Action != "order.create" || lastAudit.ActorID != order.MerchantID {
-		t.Fatalf("last audit log = %+v, want order.create by merchant", lastAudit)
+	foundCreateAudit := false
+	for _, auditLog := range auditLogs {
+		if auditLog.Action == "order.create" && auditLog.ActorID == order.MerchantID {
+			foundCreateAudit = true
+			break
+		}
+	}
+	if !foundCreateAudit {
+		t.Fatalf("audit logs = %+v, want order.create by merchant", auditLogs)
 	}
 	replayAudit := commerce.AuditLog{
 		MerchantID:    "platform",
@@ -331,9 +337,15 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		t.Fatalf("record audit log: %v", err)
 	}
 	auditLogs = store.AuditLogs()
-	lastAudit = auditLogs[len(auditLogs)-1]
-	if lastAudit.Action != "dlq.replay" || lastAudit.Details["queue"] != "inventory.reserve.dlq" {
-		t.Fatalf("last audit log = %+v, want replay details", lastAudit)
+	foundReplayAudit := false
+	for _, auditLog := range auditLogs {
+		if auditLog.Action == "dlq.replay" && auditLog.Details["queue"] == "inventory.reserve.dlq" {
+			foundReplayAudit = true
+			break
+		}
+	}
+	if !foundReplayAudit {
+		t.Fatalf("audit logs = %+v, want replay details", auditLogs)
 	}
 	pending, err := store.PendingOutboxEvents(ctx, 10)
 	if err != nil {

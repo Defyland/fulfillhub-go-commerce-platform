@@ -8,9 +8,14 @@ cd "$REPO_ROOT"
 RESULT_ROOT=${RESULT_ROOT:-benchmarks/results}
 STAMP=${STAMP:-$(date -u +%Y-%m-%dT%H-%M-%SZ)}
 RESULT_DIR="$RESULT_ROOT/compose-$STAMP"
-BASE_URL=${BASE_URL:-http://localhost:8080}
+API_PORT=${API_PORT:-8080}
+RABBITMQ_MANAGEMENT_PORT=${RABBITMQ_MANAGEMENT_PORT:-15672}
+BASE_URL=${BASE_URL:-http://localhost:${API_PORT}}
 SCENARIOS=${SCENARIOS:-"smoke load stress spike"}
 KEEP_STACK=${KEEP_STACK:-0}
+DRAIN_TIMEOUT_SECONDS=${DRAIN_TIMEOUT_SECONDS:-60}
+RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-10000}
+export RATE_LIMIT_PER_MINUTE
 
 mkdir -p "$RESULT_DIR"
 
@@ -63,12 +68,29 @@ wait_for_api() {
   exit 1
 }
 
+wait_for_async_drain() {
+  label=$1
+  deadline=$(($(date +%s) + DRAIN_TIMEOUT_SECONDS))
+  while [ "$(date +%s)" -lt "$deadline" ]; do
+    metrics=$(curl -fsS "$BASE_URL/metrics" 2>/dev/null || true)
+    outbox=$(printf '%s\n' "$metrics" | awk '$1 == "fulfillhub_outbox_unpublished_total" { print int($2); found = 1 } END { if (!found) print -1 }')
+    queued=$(printf '%s\n' "$metrics" | awk '$1 ~ /^fulfillhub_rabbitmq_queue_messages_ready/ { sum += $2 } END { print sum + 0 }')
+    if [ "$outbox" -eq 0 ] && [ "$queued" -eq 0 ]; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "async drain did not complete for $label after ${DRAIN_TIMEOUT_SECONDS}s" >&2
+  echo "last outbox backlog: $outbox; last queued RabbitMQ messages: $queued" >&2
+  exit 1
+}
+
 snapshot() {
   label=$1
   capture "compose-ps-$label.txt" docker compose ps
-  capture "docker-stats-$label.txt" docker stats --no-stream
+  capture_shell "docker-stats-$label.txt" 'containers=$(docker compose ps -q); if [ -n "$containers" ]; then docker stats --no-stream $containers; else echo "no compose containers"; fi'
   capture "api-metrics-$label.prom" curl -fsS "$BASE_URL/metrics"
-  capture "rabbitmq-queues-$label.json" curl -fsS -u guest:guest http://localhost:15672/api/queues
+  capture "rabbitmq-queues-$label.json" curl -fsS -u guest:guest "http://localhost:${RABBITMQ_MANAGEMENT_PORT}/api/queues"
   capture "redis-memory-$label.txt" docker compose exec -T redis redis-cli INFO memory
   capture "postgres-activity-$label.txt" docker compose exec -T postgres psql -U fulfillhub -d fulfillhub -c "SELECT datname, numbackends, xact_commit, xact_rollback, blks_read, blks_hit FROM pg_stat_database WHERE datname = 'fulfillhub';"
 }
@@ -107,6 +129,7 @@ for scenario in $SCENARIOS; do
     echo "k6 scenario failed: $scenario; see $log" >&2
     exit 1
   fi
+  wait_for_async_drain "$scenario"
   snapshot "after-$scenario"
 done
 
@@ -116,12 +139,15 @@ cat >"$RESULT_DIR/README.md" <<EOF
 # Compose Profiling Run
 
 - Timestamp: $STAMP
-- Base URL: $BASE_URL
+- Base URL: \`$BASE_URL\`
 - Scenarios: $SCENARIOS
+- Async drain timeout: ${DRAIN_TIMEOUT_SECONDS}s
 - Result directory: $RESULT_DIR
 
 Captured artifacts include Docker stats, API Prometheus metrics, RabbitMQ queue
-state, Redis memory info, PostgreSQL activity, k6 logs, and k6 summary exports.
+state, Redis memory info, PostgreSQL activity, k6 logs, k6 summary exports, and
+post-scenario snapshots taken only after unpublished outbox and ready queue
+metrics drain to zero.
 EOF
 
 echo "compose profiling artifacts written to $RESULT_DIR"

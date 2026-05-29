@@ -1,0 +1,31 @@
+# HELP fulfillhub_http_requests_total Total HTTP requests handled.
+# TYPE fulfillhub_http_requests_total counter
+fulfillhub_http_requests_total 314
+# HELP fulfillhub_http_errors_total Total HTTP error responses returned.
+# TYPE fulfillhub_http_errors_total counter
+fulfillhub_http_errors_total 0
+# HELP fulfillhub_outbox_metrics_up Whether outbox metrics were collected successfully.
+# TYPE fulfillhub_outbox_metrics_up gauge
+fulfillhub_outbox_metrics_up 1
+# HELP fulfillhub_outbox_unpublished_total Unpublished outbox events waiting for relay.
+# TYPE fulfillhub_outbox_unpublished_total gauge
+fulfillhub_outbox_unpublished_total 0
+# HELP fulfillhub_rabbitmq_queue_metrics_up Whether RabbitMQ queue metrics were collected successfully.
+# TYPE fulfillhub_rabbitmq_queue_metrics_up gauge
+fulfillhub_rabbitmq_queue_metrics_up 1
+# HELP fulfillhub_rabbitmq_queue_messages_ready Ready messages reported by RabbitMQ queue inspection.
+# TYPE fulfillhub_rabbitmq_queue_messages_ready gauge
+fulfillhub_rabbitmq_queue_messages_ready{queue="inventory.reserve"} 0
+fulfillhub_rabbitmq_queue_messages_ready{queue="payments.authorize"} 0
+fulfillhub_rabbitmq_queue_messages_ready{queue="shipments.create"} 0
+fulfillhub_rabbitmq_queue_messages_ready{queue="orders.finalize"} 0
+fulfillhub_rabbitmq_queue_messages_ready{queue="orders.compensate"} 0
+fulfillhub_rabbitmq_queue_messages_ready{queue="notifications.email"} 0
+# HELP fulfillhub_rabbitmq_queue_consumers Consumers reported by RabbitMQ queue inspection.
+# TYPE fulfillhub_rabbitmq_queue_consumers gauge
+fulfillhub_rabbitmq_queue_consumers{queue="inventory.reserve"} 1
+fulfillhub_rabbitmq_queue_consumers{queue="payments.authorize"} 1
+fulfillhub_rabbitmq_queue_consumers{queue="shipments.create"} 1
+fulfillhub_rabbitmq_queue_consumers{queue="orders.finalize"} 1
+fulfillhub_rabbitmq_queue_consumers{queue="orders.compensate"} 1
+fulfillhub_rabbitmq_queue_consumers{queue="notifications.email"} 1

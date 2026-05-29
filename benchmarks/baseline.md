@@ -3,8 +3,9 @@
 ## Scope
 
 This document defines the benchmark matrix and acceptance targets for
-FulfillHub. The repository now has a native in-process Go benchmark and k6
-smoke, load, stress, and spike results against the local in-memory API process.
+FulfillHub. The repository now has a native in-process Go benchmark, k6 smoke,
+load, stress, and spike results against the local in-memory API process, and a
+Compose-backed smoke profile against the full local runtime.
 
 ## Planned scenarios
 
@@ -26,6 +27,7 @@ The k6 scripts live under `benchmarks/k6/`.
 | k6 load | p95 2.99 ms, p99 6.49 ms, 0.00% errors | 50 VUs for 15 minutes against in-memory API |
 | k6 stress | p95 5.74 ms, p99 9.42 ms, 0.00% errors | 50 to 250 VU ramp over 20 minutes against in-memory API |
 | k6 spike | p95 5.58 ms, p99 7.92 ms, 0.00% errors | 20 to 200 VU spike over 5 minutes against in-memory API |
+| Compose k6 smoke | p95 23.92 ms, p99 192.44 ms, 0.00% errors | 5 VUs for 1 minute against API, PostgreSQL, RabbitMQ, Redis, relay, and workers |
 
 ## Measured metrics
 
@@ -49,7 +51,7 @@ Every benchmark run must record:
 ## Exit criteria for the next performance phase
 
 - Run k6 load, stress, and spike against the Docker Compose stack
-- Capture PostgreSQL CPU and connection pool notes
-- Capture RabbitMQ queue depth and consumer lag notes
+- Capture PostgreSQL CPU and connection pool notes under sustained and burst traffic
+- Capture RabbitMQ queue depth and consumer lag notes under sustained and burst traffic
 - Capture Redis limiter behavior under spike traffic
-- Capture API memory profile under container limits
+- Capture API memory profile under sustained and burst container limits

@@ -50,7 +50,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	publisher, err := messaging.NewRabbitPublisher(rabbitURL)
+	publisher, err := newRabbitPublisherWithRetry(ctx, rabbitURL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -73,6 +73,29 @@ func main() {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+	}
+}
+
+func newRabbitPublisherWithRetry(ctx context.Context, rabbitURL string) (*messaging.RabbitPublisher, error) {
+	deadline := time.NewTimer(60 * time.Second)
+	defer deadline.Stop()
+
+	var lastErr error
+	for {
+		publisher, err := messaging.NewRabbitPublisher(rabbitURL)
+		if err == nil {
+			return publisher, nil
+		}
+		lastErr = err
+		log.Printf("rabbitmq publisher unavailable, retrying: %v", err)
+
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-deadline.C:
+			return nil, lastErr
+		case <-time.After(2 * time.Second):
 		}
 	}
 }
