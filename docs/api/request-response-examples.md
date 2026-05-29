@@ -118,6 +118,42 @@ curl --request GET http://localhost:8080/api/v1/orders/ord_01hzy72wf4ekcg7fbc7r8
 }
 ```
 
+## Get shipment
+
+```sh
+curl --request GET http://localhost:8080/api/v1/shipments/shp_01hzy7bkqj29z5wdpq3z6hccbc \
+  --header 'X-API-Key: fh_live_merchant_demo'
+```
+
+```json
+{
+  "data": {
+    "shipment_id": "shp_01hzy7bkqj29z5wdpq3z6hccbc",
+    "order_id": "ord_01hzy72wf4ekcg7fbc7r8rtn2r",
+    "merchant_id": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
+    "carrier": "ups",
+    "tracking_number": "1Z999AA10123456784",
+    "status": "in_transit",
+    "events": [
+      {
+        "occurred_at": "2026-05-28T20:15:22Z",
+        "status": "label_created",
+        "description": "Label created with carrier."
+      },
+      {
+        "occurred_at": "2026-05-28T22:30:10Z",
+        "status": "in_transit",
+        "description": "Package accepted at origin facility."
+      }
+    ]
+  },
+  "meta": {
+    "request_id": "req_01hzy7dbfnd9sk2t7q2fef4t8d",
+    "correlation_id": "cor_01hzy72wf4ekcg7fbc7r8rtn2r"
+  }
+}
+```
+
 ## Cancel order
 
 ```sh

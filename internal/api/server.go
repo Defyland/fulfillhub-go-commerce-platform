@@ -232,7 +232,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
 		s.orderRoute(w, r, requestID, correlationID)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/shipments/"):
-		s.writeError(w, http.StatusNotFound, "not_found", "Shipment not found.", false, nil, requestID, correlationID)
+		shipmentID := strings.TrimPrefix(r.URL.Path, "/api/v1/shipments/")
+		s.getShipment(w, r, shipmentID, requestID, correlationID)
 	default:
 		s.writeError(w, http.StatusNotFound, "not_found", "Route not found.", false, nil, requestID, correlationID)
 	}
@@ -332,6 +333,34 @@ func (s *Server) getOrder(w http.ResponseWriter, r *http.Request, orderID, reque
 	}
 	writeJSON(w, http.StatusOK, envelope{
 		Data: order,
+		Meta: responseMeta{RequestID: requestID, CorrelationID: correlationID},
+	})
+}
+
+func (s *Server) getShipment(w http.ResponseWriter, r *http.Request, shipmentID, requestID, correlationID string) {
+	act, ok := s.authenticate(w, r, requestID, correlationID)
+	if !ok {
+		return
+	}
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("fulfillhub.shipment_id", shipmentID),
+		attribute.String("fulfillhub.operation", "get_shipment"),
+	)
+	shipment, err := s.service.GetShipmentContext(r.Context(), shipmentID)
+	if err != nil {
+		s.handleCommerceError(w, err, requestID, correlationID)
+		return
+	}
+	trace.SpanFromContext(r.Context()).SetAttributes(
+		attribute.String("fulfillhub.order_id", shipment.OrderID),
+		attribute.String("fulfillhub.merchant_id", shipment.MerchantID),
+	)
+	if !act.Ops && act.MerchantID != shipment.MerchantID {
+		s.writeError(w, http.StatusForbidden, "forbidden", "The caller cannot access this shipment.", false, nil, requestID, correlationID)
+		return
+	}
+	writeJSON(w, http.StatusOK, envelope{
+		Data: shipment,
 		Meta: responseMeta{RequestID: requestID, CorrelationID: correlationID},
 	})
 }

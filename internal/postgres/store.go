@@ -136,6 +136,16 @@ func (s *Store) GetOrder(ctx context.Context, orderID string) (order *commerce.O
 	return getOrderTx(ctx, s.db, orderID)
 }
 
+func (s *Store) GetShipment(ctx context.Context, shipmentID string) (shipment *commerce.ShipmentRecord, err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.get_shipment", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.shipment_id", shipmentID),
+	))
+	defer finishSpan(span, &err, "get shipment")
+	return getShipmentTx(ctx, s.db, shipmentID)
+}
+
 func (s *Store) UpdateOrderStatus(ctx context.Context, orderID string, status commerce.OrderStatus, now time.Time, event commerce.OutboxEvent, audit commerce.AuditLog) (order *commerce.Order, err error) {
 	ctx = contextOrBackground(ctx)
 	ctx, span := postgresTracer().Start(ctx, "postgres.update_order_status", trace.WithAttributes(
@@ -1036,6 +1046,35 @@ func getOrderTx(ctx context.Context, q queryer, orderID string) (*commerce.Order
 		order.Shipment = &shipment
 	}
 	return &order, nil
+}
+
+func getShipmentTx(ctx context.Context, q queryer, shipmentID string) (*commerce.ShipmentRecord, error) {
+	var record commerce.ShipmentRecord
+	var shipmentCreatedAt time.Time
+	if err := q.QueryRowContext(ctx, `
+		SELECT shipment_id, order_id, merchant_id, carrier, tracking_number, status, created_at
+		FROM shipments
+		WHERE shipment_id = $1
+	`, shipmentID).Scan(
+		&record.ShipmentID,
+		&record.OrderID,
+		&record.MerchantID,
+		&record.Carrier,
+		&record.TrackingNumber,
+		&record.Status,
+		&shipmentCreatedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, commerce.ErrNotFound
+		}
+		return nil, fmt.Errorf("get shipment: %w", err)
+	}
+	record.Events = []commerce.ShipmentEvent{{
+		OccurredAt:  shipmentCreatedAt,
+		Status:      record.Status,
+		Description: "Shipment projection created.",
+	}}
+	return &record, nil
 }
 
 func orderByIdempotency(ctx context.Context, tx *sql.Tx, merchantID, idempotencyKey string) (string, bool, error) {

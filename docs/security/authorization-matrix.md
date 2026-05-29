@@ -7,6 +7,7 @@
 | `POST /api/v1/orders` | Create order for own merchant only | Denied | Denied |
 | `GET /api/v1/orders/{orderId}` | Own merchant orders only | Any merchant order | Denied |
 | `POST /api/v1/orders/{orderId}/cancel` | Own merchant orders only | Any merchant order | Denied |
+| `GET /api/v1/shipments/{shipmentId}` | Own merchant shipments only | Any merchant shipment | Denied |
 | `GET /healthz` | Allowed | Allowed | Allowed |
 | `GET /readyz` | Allowed | Allowed | Allowed |
 | `GET /metrics` | Allowed only when no metrics bearer token is configured | Allowed only when no metrics bearer token is configured | Allowed only when no metrics bearer token is configured |

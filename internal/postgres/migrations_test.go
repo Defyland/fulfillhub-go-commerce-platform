@@ -345,8 +345,9 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		MerchantID:    order.MerchantID,
 		OccurredAt:    now.Add(4 * time.Second),
 	}
+	shipmentID := "shp_pg_test_" + strings.ReplaceAll(t.Name(), "/", "_")
 	if err := store.RecordShipmentCreated(ctx, paymentEvent, shipmentEvent, commerce.Shipment{
-		ShipmentID:     "shp_pg_test_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		ShipmentID:     shipmentID,
 		Status:         "created",
 		Carrier:        "fake-carrier",
 		TrackingNumber: "TRACK-PG-" + strings.ReplaceAll(t.Name(), "/", "_"),
@@ -360,6 +361,16 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		CreatedAt:     shipmentEvent.OccurredAt,
 	}); err != nil {
 		t.Fatalf("record shipment created: %v", err)
+	}
+	shipment, err := store.GetShipment(ctx, shipmentID)
+	if err != nil {
+		t.Fatalf("get shipment: %v", err)
+	}
+	if shipment.OrderID != order.OrderID || shipment.MerchantID != order.MerchantID {
+		t.Fatalf("shipment = %+v, want order and merchant ownership", shipment)
+	}
+	if shipment.Status != "created" || shipment.Carrier != "fake-carrier" || len(shipment.Events) != 1 {
+		t.Fatalf("shipment projection = %+v, want carrier timeline", shipment)
 	}
 	fetched, err = store.GetOrder(ctx, order.OrderID)
 	if err != nil {
@@ -658,6 +669,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		"postgres.record_inventory_reserved",
 		"postgres.record_payment_authorized",
 		"postgres.record_shipment_created",
+		"postgres.get_shipment",
 		"postgres.update_order_status",
 		"postgres.record_notification_queued",
 		"postgres.record_compensation",

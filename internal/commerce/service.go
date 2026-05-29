@@ -127,6 +127,10 @@ func (s *Service) GetOrderContext(ctx context.Context, orderID string) (*Order, 
 	return s.store.GetOrder(ctx, orderID)
 }
 
+func (s *Service) GetShipmentContext(ctx context.Context, shipmentID string) (*ShipmentRecord, error) {
+	return s.store.GetShipment(ctx, shipmentID)
+}
+
 func (s *Service) CancelOrderContext(ctx context.Context, orderID, correlationID string, actor AuditActor) (*Order, error) {
 	order, err := s.store.GetOrder(ctx, orderID)
 	if err != nil {

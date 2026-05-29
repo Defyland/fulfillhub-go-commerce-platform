@@ -359,6 +359,76 @@ func TestOpsTokenCanReadMerchantOrder(t *testing.T) {
 	assertStatus(t, rec, http.StatusOK)
 }
 
+func TestGetShipmentReturnsMerchantShipment(t *testing.T) {
+	server, store, service := testServerWithStore()
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	shipmentID := recordShipment(t, store, service, orderID)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/shipments/"+shipmentID, nil)
+	req.Header.Set("X-API-Key", "fh_live_merchant_demo")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+	var body struct {
+		Data commerce.ShipmentRecord `json:"data"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode shipment response: %v", err)
+	}
+	if body.Data.ShipmentID != shipmentID || body.Data.OrderID != orderID {
+		t.Fatalf("shipment response = %+v, want shipment %s for order %s", body.Data, shipmentID, orderID)
+	}
+	if body.Data.MerchantID != "mer_01hzy6v4egscg4r7kb3m7jq2dk" {
+		t.Fatalf("shipment merchant = %q, want API-key merchant", body.Data.MerchantID)
+	}
+	if body.Data.Carrier != "ups" || len(body.Data.Events) != 1 {
+		t.Fatalf("shipment projection = %+v, want carrier and timeline", body.Data)
+	}
+}
+
+func TestMerchantCannotReadAnotherMerchantShipment(t *testing.T) {
+	server, store, service := testServerWithStore()
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	shipmentID := recordShipment(t, store, service, orderID)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/shipments/"+shipmentID, nil)
+	req.Header.Set("X-API-Key", "fh_live_second_demo")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusForbidden)
+}
+
+func TestOpsTokenCanReadMerchantShipment(t *testing.T) {
+	server, store, service := testServerWithStore()
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	shipmentID := recordShipment(t, store, service, orderID)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/shipments/"+shipmentID, nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusOK)
+}
+
+func TestGetShipmentRequiresAuthentication(t *testing.T) {
+	server, store, service := testServerWithStore()
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	shipmentID := recordShipment(t, store, service, orderID)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/shipments/"+shipmentID, nil)
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusUnauthorized)
+}
+
 func TestOpsJWTCanReadMerchantOrder(t *testing.T) {
 	const secret = "ops-jwt-secret"
 	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
@@ -577,7 +647,14 @@ func BenchmarkCreateOrder(b *testing.B) {
 }
 
 func testServer() http.Handler {
-	return NewServer(commerce.NewService(commerce.NewMemoryStore()))
+	server, _, _ := testServerWithStore()
+	return server
+}
+
+func testServerWithStore() (http.Handler, *commerce.MemoryStore, *commerce.Service) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	return NewServer(service), store, service
 }
 
 func createOrder(t testing.TB, server http.Handler, apiKey, idempotencyKey string) string {
@@ -591,6 +668,44 @@ func createOrder(t testing.TB, server http.Handler, apiKey, idempotencyKey strin
 
 	assertStatus(t, rec, http.StatusAccepted)
 	return decodeOrderID(t, rec)
+}
+
+func recordShipment(t testing.TB, store *commerce.MemoryStore, service *commerce.Service, orderID string) string {
+	t.Helper()
+	created := service.OutboxEvents()[0]
+	shipmentID := "shp_api_test"
+	occurredAt := time.Date(2026, 5, 29, 15, 30, 0, 0, time.UTC)
+	event := commerce.OutboxEvent{
+		MessageID:     "msg_api_shipment",
+		CorrelationID: created.CorrelationID,
+		CausationID:   created.MessageID,
+		EventType:     "shipment.created",
+		OrderID:       orderID,
+		MerchantID:    created.MerchantID,
+		OccurredAt:    occurredAt,
+	}
+	if err := store.RecordShipmentCreated(context.Background(), created, event, commerce.Shipment{
+		ShipmentID:     shipmentID,
+		Status:         "created",
+		Carrier:        "ups",
+		TrackingNumber: "1Z999AA10123456784",
+		Events: []commerce.ShipmentEvent{{
+			OccurredAt:  occurredAt,
+			Status:      "created",
+			Description: "Label created with carrier.",
+		}},
+	}, commerce.AuditLog{
+		MerchantID:    created.MerchantID,
+		OrderID:       orderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "shipment.created",
+		CorrelationID: created.CorrelationID,
+		CreatedAt:     occurredAt,
+	}); err != nil {
+		t.Fatalf("record shipment: %v", err)
+	}
+	return shipmentID
 }
 
 func decodeOrderID(t testing.TB, rec *httptest.ResponseRecorder) string {

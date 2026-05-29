@@ -85,6 +85,16 @@ type ShipmentEvent struct {
 	Description string    `json:"description"`
 }
 
+type ShipmentRecord struct {
+	ShipmentID     string          `json:"shipment_id"`
+	OrderID        string          `json:"order_id"`
+	MerchantID     string          `json:"merchant_id"`
+	Carrier        string          `json:"carrier"`
+	TrackingNumber string          `json:"tracking_number"`
+	Status         string          `json:"status"`
+	Events         []ShipmentEvent `json:"events"`
+}
+
 type Order struct {
 	OrderID         string      `json:"order_id"`
 	MerchantID      string      `json:"merchant_id"`

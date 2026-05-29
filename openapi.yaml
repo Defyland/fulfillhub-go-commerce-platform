@@ -439,6 +439,30 @@ paths:
                     meta:
                       request_id: req_01hzy7kwm0cfg5r4w8t9c0a93q
                       correlation_id: cor_01hzy72wf4ekcg7fbc7r8rtn2r
+        '401':
+          description: Caller is not authenticated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Caller is authenticated but not allowed to access this merchant shipment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                forbidden:
+                  value:
+                    error:
+                      code: forbidden
+                      message: The caller cannot access this shipment.
+                      retryable: false
+                      details: []
+                    meta:
+                      request_id: req_01hzy7m9yx1ssmxmr72cvn52qe
+                      correlation_id: cor_01hzy72wf4ekcg7fbc7r8rtn2r
+                      timestamp: '2026-05-28T20:15:00Z'
         '404':
           description: Shipment not found
           content:

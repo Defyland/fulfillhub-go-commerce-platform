@@ -94,6 +94,7 @@ The API surface is versioned under `/api/v1` and covers:
 - `POST /api/v1/orders`
 - `GET /api/v1/orders/{orderId}`
 - `POST /api/v1/orders/{orderId}/cancel`
+- `GET /api/v1/shipments/{shipmentId}`
 - `GET /healthz`
 - `GET /readyz`
 - `GET /metrics`
@@ -143,6 +144,7 @@ The current implementation includes Go tests for:
 - authentication and tenant authorization
 - validation and conflict error contracts
 - operations token access
+- shipment lookup and tenant authorization
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
 - RabbitMQ consumer trace propagation, inbox deduplication, retry scheduling, and ack/nack behavior

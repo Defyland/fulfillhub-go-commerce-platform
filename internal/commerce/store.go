@@ -10,6 +10,7 @@ import (
 type Store interface {
 	InsertOrder(ctx context.Context, merchantID, idempotencyKey string, order *Order, event OutboxEvent, audit AuditLog) (*Order, bool, error)
 	GetOrder(ctx context.Context, orderID string) (*Order, error)
+	GetShipment(ctx context.Context, shipmentID string) (*ShipmentRecord, error)
 	UpdateOrderStatus(ctx context.Context, orderID string, status OrderStatus, now time.Time, event OutboxEvent, audit AuditLog) (*Order, error)
 	OutboxEvents() []OutboxEvent
 	AuditLogs() []AuditLog
@@ -82,6 +83,19 @@ func (s *MemoryStore) GetOrder(_ context.Context, orderID string) (*Order, error
 		return nil, ErrNotFound
 	}
 	return cloneOrder(order), nil
+}
+
+func (s *MemoryStore) GetShipment(_ context.Context, shipmentID string) (*ShipmentRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, order := range s.orders {
+		if order.Shipment == nil || order.Shipment.ShipmentID != shipmentID {
+			continue
+		}
+		return cloneShipmentRecord(shipmentRecordFromOrder(order)), nil
+	}
+	return nil, ErrNotFound
 }
 
 func (s *MemoryStore) UpdateOrderStatus(_ context.Context, orderID string, status OrderStatus, now time.Time, event OutboxEvent, audit AuditLog) (*Order, error) {
@@ -327,6 +341,30 @@ func cloneOrder(order *Order) *Order {
 
 func CloneOrderForStore(order *Order) *Order {
 	return cloneOrder(order)
+}
+
+func shipmentRecordFromOrder(order *Order) *ShipmentRecord {
+	if order == nil || order.Shipment == nil {
+		return nil
+	}
+	return &ShipmentRecord{
+		ShipmentID:     order.Shipment.ShipmentID,
+		OrderID:        order.OrderID,
+		MerchantID:     order.MerchantID,
+		Carrier:        order.Shipment.Carrier,
+		TrackingNumber: order.Shipment.TrackingNumber,
+		Status:         order.Shipment.Status,
+		Events:         append([]ShipmentEvent(nil), order.Shipment.Events...),
+	}
+}
+
+func cloneShipmentRecord(record *ShipmentRecord) *ShipmentRecord {
+	if record == nil {
+		return nil
+	}
+	clone := *record
+	clone.Events = append([]ShipmentEvent(nil), record.Events...)
+	return &clone
 }
 
 func cloneAuditLog(log AuditLog) AuditLog {

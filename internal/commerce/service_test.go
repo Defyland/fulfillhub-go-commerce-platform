@@ -164,6 +164,10 @@ func (s *contextCapturingStore) GetOrder(context.Context, string) (*Order, error
 	return nil, ErrNotFound
 }
 
+func (s *contextCapturingStore) GetShipment(context.Context, string) (*ShipmentRecord, error) {
+	return nil, ErrNotFound
+}
+
 func (s *contextCapturingStore) UpdateOrderStatus(context.Context, string, OrderStatus, time.Time, OutboxEvent, AuditLog) (*Order, error) {
 	return nil, ErrNotFound
 }
