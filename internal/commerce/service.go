@@ -139,6 +139,9 @@ func (s *Service) CancelOrderContext(ctx context.Context, orderID, correlationID
 	if order.Status == StatusCompleted || order.Status == StatusCancelled {
 		return nil, ErrInvalidStateTransition
 	}
+	if err := ValidateOrderTransition(order.Status, StatusCancellationPending); err != nil {
+		return nil, err
+	}
 
 	now := s.clock()
 	messageID := s.nextID("msg")

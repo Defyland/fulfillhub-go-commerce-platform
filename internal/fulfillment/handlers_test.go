@@ -459,6 +459,8 @@ func TestCancellationHandlerRoutesCreatedShipmentToManualReview(t *testing.T) {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
 	created := service.OutboxEvents()[0]
+	advanceOrderStatusForTest(t, store, order, commerce.StatusInventoryReserved, created.CorrelationID)
+	advanceOrderStatusForTest(t, store, order, commerce.StatusPaymentAuthorized, created.CorrelationID)
 	shipmentCreated := commerce.OutboxEvent{
 		MessageID:     "msg_shipment_created",
 		CorrelationID: created.CorrelationID,
@@ -539,6 +541,8 @@ func TestOrderFinalizerDoesNotCompleteCancellationPendingOrder(t *testing.T) {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
 	created := service.OutboxEvents()[0]
+	advanceOrderStatusForTest(t, store, order, commerce.StatusInventoryReserved, created.CorrelationID)
+	advanceOrderStatusForTest(t, store, order, commerce.StatusPaymentAuthorized, created.CorrelationID)
 	shipmentCreated := commerce.OutboxEvent{
 		MessageID:     "msg_shipment_created",
 		CorrelationID: created.CorrelationID,
@@ -743,6 +747,32 @@ func assertOrderStatus(t testing.TB, store *commerce.MemoryStore, orderID string
 	}
 	if order.Status != want {
 		t.Fatalf("order status = %q, want %q", order.Status, want)
+	}
+}
+
+func advanceOrderStatusForTest(t testing.TB, store *commerce.MemoryStore, order *commerce.Order, status commerce.OrderStatus, correlationID string) {
+	t.Helper()
+	now := time.Date(2026, 5, 29, 13, 20, 0, 0, time.UTC)
+	event := commerce.OutboxEvent{
+		MessageID:     "msg_" + string(status),
+		CorrelationID: correlationID,
+		CausationID:   "msg_test_causation",
+		EventType:     "test.status_advanced",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+		OccurredAt:    now,
+	}
+	audit := commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "test",
+		ActorID:       "test",
+		Action:        "test.status_advanced",
+		CorrelationID: correlationID,
+		CreatedAt:     now,
+	}
+	if _, err := store.UpdateOrderStatus(context.Background(), order.OrderID, status, now, event, audit); err != nil {
+		t.Fatalf("advance order to %s: %v", status, err)
 	}
 }
 

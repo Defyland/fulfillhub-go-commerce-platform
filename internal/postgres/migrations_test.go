@@ -177,6 +177,30 @@ func TestMigrationsSeedLocalDemoInventory(t *testing.T) {
 	}
 }
 
+func TestMigrationsConstrainOrderStatuses(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/011_order_status_check.sql")
+	if err != nil {
+		t.Fatalf("read order status check migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{
+		"chk_orders_status",
+		"pending_fulfillment",
+		"inventory_reserved",
+		"payment_authorized",
+		"shipment_created",
+		"cancellation_pending",
+		"manual_review",
+		"cancelled",
+		"completed",
+		"failed",
+	} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("order status check migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {

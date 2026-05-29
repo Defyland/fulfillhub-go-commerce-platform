@@ -107,6 +107,9 @@ func (s *MemoryStore) UpdateOrderStatus(_ context.Context, orderID string, statu
 	if !ok {
 		return nil, ErrNotFound
 	}
+	if err := ValidateOrderTransition(order.Status, status); err != nil {
+		return nil, err
+	}
 	order.Status = status
 	order.UpdatedAt = now
 	s.outbox = append(s.outbox, event)
@@ -122,6 +125,9 @@ func (s *MemoryStore) RecordInventoryReserved(_ context.Context, source OutboxEv
 	order, ok := s.orders[source.OrderID]
 	if !ok {
 		return ErrNotFound
+	}
+	if err := ValidateOrderTransition(order.Status, StatusInventoryReserved); err != nil {
+		return err
 	}
 	for idx := range order.Items {
 		order.Items[idx].ReservationStatus = "reserved"
@@ -161,6 +167,9 @@ func (s *MemoryStore) RecordPaymentAuthorized(_ context.Context, source OutboxEv
 	if payment.Provider == "" && order.Payment != nil {
 		payment.Provider = order.Payment.Provider
 	}
+	if err := ValidateOrderTransition(order.Status, StatusPaymentAuthorized); err != nil {
+		return err
+	}
 	order.Payment = &payment
 	order.Status = StatusPaymentAuthorized
 	order.UpdatedAt = next.OccurredAt
@@ -198,6 +207,9 @@ func (s *MemoryStore) RecordShipmentCreated(_ context.Context, source OutboxEven
 	order, ok := s.orders[source.OrderID]
 	if !ok {
 		return ErrNotFound
+	}
+	if err := ValidateOrderTransition(order.Status, StatusShipmentCreated); err != nil {
+		return err
 	}
 	order.Shipment = &shipment
 	order.Status = StatusShipmentCreated
@@ -242,6 +254,9 @@ func (s *MemoryStore) RecordCompensation(_ context.Context, source OutboxEvent, 
 	order, ok := s.orders[source.OrderID]
 	if !ok {
 		return ErrNotFound
+	}
+	if err := ValidateOrderTransition(order.Status, status); err != nil {
+		return err
 	}
 	order.Status = status
 	order.UpdatedAt = audit.CreatedAt

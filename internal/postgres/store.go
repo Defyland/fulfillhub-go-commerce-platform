@@ -161,6 +161,13 @@ func (s *Store) UpdateOrderStatus(ctx context.Context, orderID string, status co
 	}
 	defer rollback(tx)
 
+	currentStatus, err := lockOrderStatusForUpdate(ctx, tx, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if err := commerce.ValidateOrderTransition(currentStatus, status); err != nil {
+		return nil, err
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET status = $2, updated_at = $3, version = version + 1
@@ -210,6 +217,13 @@ func (s *Store) RecordInventoryReserved(ctx context.Context, source commerce.Out
 	}
 	defer rollback(tx)
 
+	currentStatus, err := lockOrderStatusForUpdate(ctx, tx, source.OrderID)
+	if err != nil {
+		return err
+	}
+	if err := commerce.ValidateOrderTransition(currentStatus, commerce.StatusInventoryReserved); err != nil {
+		return err
+	}
 	items, err := orderItemsForReservation(ctx, tx, source.OrderID)
 	if err != nil {
 		return err
@@ -322,6 +336,13 @@ func (s *Store) RecordPaymentAuthorized(ctx context.Context, source commerce.Out
 	}
 	defer rollback(tx)
 
+	currentStatus, err := lockOrderStatusForUpdate(ctx, tx, source.OrderID)
+	if err != nil {
+		return err
+	}
+	if err := commerce.ValidateOrderTransition(currentStatus, commerce.StatusPaymentAuthorized); err != nil {
+		return err
+	}
 	var provider, currency string
 	var totalAmount int64
 	if err := tx.QueryRowContext(ctx, `
@@ -438,6 +459,13 @@ func (s *Store) RecordShipmentCreated(ctx context.Context, source commerce.Outbo
 	}
 	defer rollback(tx)
 
+	currentStatus, err := lockOrderStatusForUpdate(ctx, tx, source.OrderID)
+	if err != nil {
+		return err
+	}
+	if err := commerce.ValidateOrderTransition(currentStatus, commerce.StatusShipmentCreated); err != nil {
+		return err
+	}
 	if _, err := getOrderTx(ctx, tx, source.OrderID); err != nil {
 		return err
 	}
@@ -571,6 +599,13 @@ func (s *Store) RecordCompensation(ctx context.Context, source commerce.OutboxEv
 	}
 	defer rollback(tx)
 
+	currentStatus, err := lockOrderStatusForUpdate(ctx, tx, source.OrderID)
+	if err != nil {
+		return err
+	}
+	if err := commerce.ValidateOrderTransition(currentStatus, status); err != nil {
+		return err
+	}
 	result, err := tx.ExecContext(ctx, `
 		UPDATE orders
 		SET status = $2,
@@ -873,6 +908,22 @@ type queryer interface {
 type reservationItem struct {
 	sku      string
 	quantity int
+}
+
+func lockOrderStatusForUpdate(ctx context.Context, tx *sql.Tx, orderID string) (commerce.OrderStatus, error) {
+	var status commerce.OrderStatus
+	if err := tx.QueryRowContext(ctx, `
+		SELECT status
+		FROM orders
+		WHERE order_id = $1
+		FOR UPDATE
+	`, orderID).Scan(&status); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", commerce.ErrNotFound
+		}
+		return "", fmt.Errorf("lock order status: %w", err)
+	}
+	return status, nil
 }
 
 func reserveInventoryItem(ctx context.Context, tx *sql.Tx, merchantID, orderID string, item reservationItem, at time.Time) (string, error) {
