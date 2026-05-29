@@ -64,13 +64,30 @@ The current worker happy path finalizes orders in one transaction:
 
 ### Inventory reservation
 
-The durable inventory projection is planned. Once implemented, one transaction must:
+The current worker records the order-level reservation projection in one transaction:
 
-1. lock `inventory_items` row with `SELECT ... FOR UPDATE`
-2. decrement available quantity and increment reserved quantity
-3. insert or update `stock_reservations`
-4. insert `outbox_events` row for the reservation result
-5. insert `inbox_messages` record for the consumed message
+1. insert or update `stock_reservations`
+2. mark `order_items.reservation_status` as `reserved`
+3. insert `outbox_events` row for `inventory.reserved`
+4. insert `audit_logs` row for `inventory.reserved`
+
+### Payment authorization
+
+The current worker records the provider authorization projection in one transaction:
+
+1. insert or update `payment_authorizations`
+2. update the order payment status and authorization ID
+3. insert `outbox_events` row for `payment.authorized`
+4. insert `audit_logs` row for `payment.authorized`
+
+### Shipment creation
+
+The current worker records the carrier handoff projection in one transaction:
+
+1. insert or update `shipments`
+2. touch the order version and update timestamp
+3. insert `outbox_events` row for `shipment.created`
+4. insert `audit_logs` row for `shipment.created`
 
 ### Compensation
 

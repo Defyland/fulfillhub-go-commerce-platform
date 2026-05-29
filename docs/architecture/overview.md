@@ -38,8 +38,8 @@ Current status:
 - PostgreSQL persistence is implemented.
 - RabbitMQ relay code is implemented.
 - RabbitMQ consumer primitives are implemented with trace continuation, inbox idempotency, and ack/nack behavior.
-- The worker executable advances the inventory, payment, shipment, and order-completion happy path.
-- Durable inventory, payment, shipment, compensation, and notification projections are planned.
+- The worker executable advances the inventory, payment, shipment, and order-completion happy path through durable projections and outbox writes.
+- Durable compensation and notification projections are planned.
 
 ## Request lifecycle
 
@@ -50,8 +50,8 @@ Current status:
 5. With `DATABASE_URL`, order state and outbox rows are committed in PostgreSQL.
 6. `cmd/fulfillhub-outbox-relay` publishes pending outbox rows to RabbitMQ.
 7. RabbitMQ consumers can continue trace context, record inbox deduplication, and acknowledge or dead-letter deliveries.
-8. `cmd/fulfillhub-worker` advances the happy path through inventory, payment, shipment, and order completion handlers.
-9. Future worker slices will persist inventory, payment, shipment, notification, and compensation projections.
+8. `cmd/fulfillhub-worker` persists inventory reservations, payment authorizations, and shipments, then writes the next saga event to the outbox.
+9. Future worker slices will persist notification and compensation projections.
 
 ## Observability model
 

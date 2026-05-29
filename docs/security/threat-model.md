@@ -30,6 +30,8 @@
 - HTTP and RabbitMQ publish/consume spans propagate W3C `traceparent` for incident correlation.
 - `order.create`, `order.cancel_requested`, and worker-driven `order.completed`
   audit logs are written with actor and correlation metadata.
+- Worker-driven inventory, payment, and shipment projections write audit logs
+  before their follow-up outbox events are published.
 - DLQ replay requires `DATABASE_URL` and `OPS_ACTOR_ID`, then records durable
   `dlq.replay` audit details for success and failure attempts.
 - Operations JWTs are validated with HS256, expiry, subject, `operations` or

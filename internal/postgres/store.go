@@ -180,6 +180,186 @@ func (s *Store) UpdateOrderStatus(ctx context.Context, orderID string, status co
 	return order, nil
 }
 
+func (s *Store) RecordInventoryReserved(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_inventory_reserved", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", source.OrderID),
+		attribute.String("fulfillhub.merchant_id", source.MerchantID),
+		attribute.String("fulfillhub.source_event_type", source.EventType),
+		attribute.String("fulfillhub.next_event_type", next.EventType),
+	))
+	defer finishSpan(span, &err, "record inventory reservation")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record inventory reservation: %w", err)
+	}
+	defer rollback(tx)
+
+	items, err := orderItemsForReservation(ctx, tx, source.OrderID)
+	if err != nil {
+		return err
+	}
+	for _, item := range items {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO stock_reservations (order_id, sku, quantity, status, reserved_at)
+			VALUES ($1, $2, $3, 'reserved', $4)
+			ON CONFLICT (order_id, sku) DO UPDATE
+			SET quantity = EXCLUDED.quantity,
+				status = EXCLUDED.status,
+				reserved_at = EXCLUDED.reserved_at,
+				released_at = NULL
+		`, source.OrderID, item.sku, item.quantity, next.OccurredAt); err != nil {
+			return fmt.Errorf("upsert stock reservation: %w", err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE order_items
+		SET reservation_status = 'reserved'
+		WHERE order_id = $1
+	`, source.OrderID); err != nil {
+		return fmt.Errorf("mark order items reserved: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET updated_at = $2,
+			version = version + 1
+		WHERE order_id = $1
+	`, source.OrderID, next.OccurredAt); err != nil {
+		return fmt.Errorf("touch order after inventory reservation: %w", err)
+	}
+	if err := insertOutboxEvent(ctx, tx, next); err != nil {
+		return err
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record inventory reservation: %w", err)
+	}
+	span.SetAttributes(attribute.Int("fulfillhub.reserved_item_count", len(items)))
+	return nil
+}
+
+func (s *Store) RecordPaymentAuthorized(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, payment commerce.Payment, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_payment_authorized", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", source.OrderID),
+		attribute.String("fulfillhub.merchant_id", source.MerchantID),
+		attribute.String("fulfillhub.payment_authorization_id", payment.AuthorizationID),
+	))
+	defer finishSpan(span, &err, "record payment authorization")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record payment authorization: %w", err)
+	}
+	defer rollback(tx)
+
+	var provider, currency string
+	var totalAmount int64
+	if err := tx.QueryRowContext(ctx, `
+		SELECT COALESCE(NULLIF($2, ''), payment_provider, 'fake-payment'), total_amount, currency
+		FROM orders
+		WHERE order_id = $1
+	`, source.OrderID, payment.Provider).Scan(&provider, &totalAmount, &currency); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return commerce.ErrNotFound
+		}
+		return fmt.Errorf("load order for payment authorization: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO payment_authorizations (
+			authorization_id, order_id, merchant_id, provider, status, amount, currency, authorized_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		ON CONFLICT (order_id) DO UPDATE
+		SET authorization_id = EXCLUDED.authorization_id,
+			provider = EXCLUDED.provider,
+			status = EXCLUDED.status,
+			amount = EXCLUDED.amount,
+			currency = EXCLUDED.currency,
+			authorized_at = EXCLUDED.authorized_at,
+			voided_at = NULL
+	`, payment.AuthorizationID, source.OrderID, source.MerchantID, provider, payment.Status, totalAmount, currency, next.OccurredAt); err != nil {
+		return fmt.Errorf("upsert payment authorization: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET payment_provider = $2,
+			payment_status = $3,
+			payment_authorization_id = $4,
+			updated_at = $5,
+			version = version + 1
+		WHERE order_id = $1
+	`, source.OrderID, provider, payment.Status, payment.AuthorizationID, next.OccurredAt); err != nil {
+		return fmt.Errorf("update order payment authorization: %w", err)
+	}
+	if err := insertOutboxEvent(ctx, tx, next); err != nil {
+		return err
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record payment authorization: %w", err)
+	}
+	return nil
+}
+
+func (s *Store) RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_shipment_created", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", source.OrderID),
+		attribute.String("fulfillhub.merchant_id", source.MerchantID),
+		attribute.String("fulfillhub.shipment_id", shipment.ShipmentID),
+	))
+	defer finishSpan(span, &err, "record shipment")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record shipment: %w", err)
+	}
+	defer rollback(tx)
+
+	if _, err := getOrderTx(ctx, tx, source.OrderID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO shipments (
+			shipment_id, order_id, merchant_id, carrier, tracking_number, status, created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+		ON CONFLICT (order_id) DO UPDATE
+		SET shipment_id = EXCLUDED.shipment_id,
+			carrier = EXCLUDED.carrier,
+			tracking_number = EXCLUDED.tracking_number,
+			status = EXCLUDED.status,
+			updated_at = EXCLUDED.updated_at
+	`, shipment.ShipmentID, source.OrderID, source.MerchantID, shipment.Carrier, shipment.TrackingNumber, shipment.Status, next.OccurredAt); err != nil {
+		return fmt.Errorf("upsert shipment: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET updated_at = $2,
+			version = version + 1
+		WHERE order_id = $1
+	`, source.OrderID, next.OccurredAt); err != nil {
+		return fmt.Errorf("touch order after shipment: %w", err)
+	}
+	if err := insertOutboxEvent(ctx, tx, next); err != nil {
+		return err
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record shipment: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 	rows, err := s.db.QueryContext(context.Background(), `
 		SELECT message_id, correlation_id, event_type, order_id, merchant_id, occurred_at
@@ -373,6 +553,40 @@ type queryer interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
+type reservationItem struct {
+	sku      string
+	quantity int
+}
+
+func orderItemsForReservation(ctx context.Context, q queryer, orderID string) ([]reservationItem, error) {
+	rows, err := q.QueryContext(ctx, `
+		SELECT sku, quantity
+		FROM order_items
+		WHERE order_id = $1
+		ORDER BY id ASC
+	`, orderID)
+	if err != nil {
+		return nil, fmt.Errorf("load order items for reservation: %w", err)
+	}
+	defer rows.Close()
+
+	var items []reservationItem
+	for rows.Next() {
+		var item reservationItem
+		if err := rows.Scan(&item.sku, &item.quantity); err != nil {
+			return nil, fmt.Errorf("scan order item for reservation: %w", err)
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate order items for reservation: %w", err)
+	}
+	if len(items) == 0 {
+		return nil, commerce.ErrNotFound
+	}
+	return items, nil
+}
+
 func getOrderTx(ctx context.Context, q queryer, orderID string) (*commerce.Order, error) {
 	var order commerce.Order
 	var subtotalAmount, shippingAmount, totalAmount int64
@@ -428,6 +642,26 @@ func getOrderTx(ctx context.Context, q queryer, orderID string) (*commerce.Order
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate order items: %w", err)
+	}
+	var shipment commerce.Shipment
+	var shipmentCreatedAt time.Time
+	if err := q.QueryRowContext(ctx, `
+		SELECT shipment_id, status, carrier, tracking_number, created_at
+		FROM shipments
+		WHERE order_id = $1
+		ORDER BY created_at DESC
+		LIMIT 1
+	`, orderID).Scan(&shipment.ShipmentID, &shipment.Status, &shipment.Carrier, &shipment.TrackingNumber, &shipmentCreatedAt); err != nil {
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, fmt.Errorf("get shipment: %w", err)
+		}
+	} else {
+		shipment.Events = []commerce.ShipmentEvent{{
+			OccurredAt:  shipmentCreatedAt,
+			Status:      shipment.Status,
+			Description: "Shipment projection created.",
+		}}
+		order.Shipment = &shipment
 	}
 	return &order, nil
 }

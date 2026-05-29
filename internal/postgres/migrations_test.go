@@ -40,6 +40,19 @@ func TestMigrationsAddAuditDetails(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddFulfillmentProjectionTables(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/003_fulfillment_projections.sql")
+	if err != nil {
+		t.Fatalf("read migration: %v", err)
+	}
+	sql := string(body)
+	for _, table := range []string{"stock_reservations", "payment_authorizations", "shipments"} {
+		if !strings.Contains(sql, "CREATE TABLE IF NOT EXISTS "+table) {
+			t.Fatalf("fulfillment projection migration does not create %s", table)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {
@@ -131,6 +144,85 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if got := len(store.OutboxEvents()); got == 0 {
 		t.Fatal("expected at least one outbox event")
 	}
+	inventoryEvent := commerce.OutboxEvent{
+		MessageID:     "msg_pg_inventory_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: event.CorrelationID,
+		EventType:     "inventory.reserved",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+		OccurredAt:    now.Add(2 * time.Second),
+	}
+	if err := store.RecordInventoryReserved(ctx, event, inventoryEvent, commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "inventory.reserved",
+		CorrelationID: event.CorrelationID,
+		CreatedAt:     inventoryEvent.OccurredAt,
+	}); err != nil {
+		t.Fatalf("record inventory reserved: %v", err)
+	}
+	paymentEvent := commerce.OutboxEvent{
+		MessageID:     "msg_pg_payment_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: event.CorrelationID,
+		EventType:     "payment.authorized",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+		OccurredAt:    now.Add(3 * time.Second),
+	}
+	if err := store.RecordPaymentAuthorized(ctx, inventoryEvent, paymentEvent, commerce.Payment{
+		Provider:        "stripe",
+		Status:          "authorized",
+		AuthorizationID: "pay_pg_test_" + strings.ReplaceAll(t.Name(), "/", "_"),
+	}, commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "payment.authorized",
+		CorrelationID: event.CorrelationID,
+		CreatedAt:     paymentEvent.OccurredAt,
+	}); err != nil {
+		t.Fatalf("record payment authorized: %v", err)
+	}
+	shipmentEvent := commerce.OutboxEvent{
+		MessageID:     "msg_pg_shipment_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: event.CorrelationID,
+		EventType:     "shipment.created",
+		OrderID:       order.OrderID,
+		MerchantID:    order.MerchantID,
+		OccurredAt:    now.Add(4 * time.Second),
+	}
+	if err := store.RecordShipmentCreated(ctx, paymentEvent, shipmentEvent, commerce.Shipment{
+		ShipmentID:     "shp_pg_test_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		Status:         "created",
+		Carrier:        "fake-carrier",
+		TrackingNumber: "TRACK-PG-" + strings.ReplaceAll(t.Name(), "/", "_"),
+	}, commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "shipment.created",
+		CorrelationID: event.CorrelationID,
+		CreatedAt:     shipmentEvent.OccurredAt,
+	}); err != nil {
+		t.Fatalf("record shipment created: %v", err)
+	}
+	fetched, err = store.GetOrder(ctx, order.OrderID)
+	if err != nil {
+		t.Fatalf("get projected order: %v", err)
+	}
+	if fetched.Items[0].ReservationStatus != "reserved" {
+		t.Fatalf("reservation status = %q, want reserved", fetched.Items[0].ReservationStatus)
+	}
+	if fetched.Payment == nil || fetched.Payment.Status != "authorized" {
+		t.Fatalf("payment projection = %+v, want authorized", fetched.Payment)
+	}
+	if fetched.Shipment == nil || fetched.Shipment.Status != "created" {
+		t.Fatalf("shipment projection = %+v, want created", fetched.Shipment)
+	}
 	auditLogs := store.AuditLogs()
 	if len(auditLogs) == 0 {
 		t.Fatal("expected at least one audit log")
@@ -199,6 +291,9 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		"postgres.mark_outbox_published",
 		"postgres.record_inbox_message",
 		"postgres.release_inbox_message",
+		"postgres.record_inventory_reserved",
+		"postgres.record_payment_authorized",
+		"postgres.record_shipment_created",
 	} {
 		if !hasSpan(recorder.Ended(), name) {
 			t.Fatalf("expected span %q in postgres integration", name)

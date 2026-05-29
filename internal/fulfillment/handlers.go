@@ -10,16 +10,18 @@ import (
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/messaging"
 )
 
-type Publisher interface {
-	Publish(ctx context.Context, event commerce.OutboxEvent) error
-}
-
 type OrderStatusUpdater interface {
 	UpdateOrderStatus(ctx context.Context, orderID string, status commerce.OrderStatus, now time.Time, event commerce.OutboxEvent, audit commerce.AuditLog) (*commerce.Order, error)
 }
 
+type Projector interface {
+	RecordInventoryReserved(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
+	RecordPaymentAuthorized(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, payment commerce.Payment, audit commerce.AuditLog) error
+	RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) error
+}
+
 type Dependencies struct {
-	Publisher Publisher
+	Projector Projector
 	Orders    OrderStatusUpdater
 	Clock     func() time.Time
 	NewID     func(prefix string) string
@@ -31,15 +33,15 @@ func HandlerForQueue(queue string, deps Dependencies) (messaging.EventHandler, e
 	switch queue {
 	case messaging.InventoryReserveQueue:
 		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
-			return publishNext(ctx, deps, event, "order.created", "inventory.reserved")
+			return reserveInventory(ctx, deps, event)
 		}), nil
 	case messaging.PaymentsAuthorizeQueue:
 		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
-			return publishNext(ctx, deps, event, "inventory.reserved", "payment.authorized")
+			return authorizePayment(ctx, deps, event)
 		}), nil
 	case messaging.ShipmentsCreateQueue:
 		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
-			return publishNext(ctx, deps, event, "payment.authorized", "shipment.created")
+			return createShipment(ctx, deps, event)
 		}), nil
 	case messaging.OrdersFinalizeQueue:
 		return messaging.HandlerFunc(func(ctx context.Context, event commerce.OutboxEvent) error {
@@ -54,14 +56,59 @@ func HandlerForQueue(queue string, deps Dependencies) (messaging.EventHandler, e
 	}
 }
 
-func publishNext(ctx context.Context, deps Dependencies, event commerce.OutboxEvent, expectedType, nextType string) error {
-	if deps.Publisher == nil {
-		return fmt.Errorf("publisher is required")
+func reserveInventory(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
+	if deps.Projector == nil {
+		return fmt.Errorf("fulfillment projector is required")
 	}
-	if err := validateEvent(event, expectedType); err != nil {
+	if err := validateEvent(event, "order.created"); err != nil {
 		return err
 	}
-	return deps.Publisher.Publish(ctx, nextEvent(deps, event, nextType))
+	now := deps.Clock()
+	next := nextEventAt(deps, event, "inventory.reserved", now)
+	return deps.Projector.RecordInventoryReserved(ctx, event, next, systemAudit(event, "inventory.reserved", now))
+}
+
+func authorizePayment(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
+	if deps.Projector == nil {
+		return fmt.Errorf("fulfillment projector is required")
+	}
+	if err := validateEvent(event, "inventory.reserved"); err != nil {
+		return err
+	}
+	now := deps.Clock()
+	next := nextEventAt(deps, event, "payment.authorized", now)
+	payment := commerce.Payment{
+		Provider:        "fake-payment",
+		Status:          "authorized",
+		AuthorizationID: deps.NewID("pay"),
+	}
+	return deps.Projector.RecordPaymentAuthorized(ctx, event, next, payment, systemAudit(event, "payment.authorized", now))
+}
+
+func createShipment(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
+	if deps.Projector == nil {
+		return fmt.Errorf("fulfillment projector is required")
+	}
+	if err := validateEvent(event, "payment.authorized"); err != nil {
+		return err
+	}
+	now := deps.Clock()
+	next := nextEventAt(deps, event, "shipment.created", now)
+	shipmentID := deps.NewID("shp")
+	shipment := commerce.Shipment{
+		ShipmentID:     shipmentID,
+		Status:         "created",
+		Carrier:        "fake-carrier",
+		TrackingNumber: "TRACK-" + shipmentID,
+		Events: []commerce.ShipmentEvent{
+			{
+				OccurredAt:  now,
+				Status:      "created",
+				Description: "Shipment booking created by fulfillment worker.",
+			},
+		},
+	}
+	return deps.Projector.RecordShipmentCreated(ctx, event, next, shipment, systemAudit(event, "shipment.created", now))
 }
 
 func completeOrder(ctx context.Context, deps Dependencies, event commerce.OutboxEvent) error {
@@ -73,22 +120,8 @@ func completeOrder(ctx context.Context, deps Dependencies, event commerce.Outbox
 	}
 
 	now := deps.Clock()
-	completed := nextEvent(deps, event, "order.completed")
-	completed.OccurredAt = now
-	audit := commerce.AuditLog{
-		MerchantID:    event.MerchantID,
-		OrderID:       event.OrderID,
-		ActorType:     "system",
-		ActorID:       "fulfillment-worker",
-		Action:        "order.completed",
-		CorrelationID: event.CorrelationID,
-		CreatedAt:     now,
-		Details: map[string]string{
-			"source_message_id": event.MessageID,
-			"source_event_type": event.EventType,
-		},
-	}
-	_, err := deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCompleted, now, completed, audit)
+	completed := nextEventAt(deps, event, "order.completed", now)
+	_, err := deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCompleted, now, completed, systemAudit(event, "order.completed", now))
 	return err
 }
 
@@ -112,7 +145,10 @@ func validateEvent(event commerce.OutboxEvent, expectedType string) error {
 }
 
 func nextEvent(deps Dependencies, previous commerce.OutboxEvent, eventType string) commerce.OutboxEvent {
-	now := deps.Clock()
+	return nextEventAt(deps, previous, eventType, deps.Clock())
+}
+
+func nextEventAt(deps Dependencies, previous commerce.OutboxEvent, eventType string, now time.Time) commerce.OutboxEvent {
 	return commerce.OutboxEvent{
 		MessageID:     deps.NewID("msg"),
 		CorrelationID: previous.CorrelationID,
@@ -120,6 +156,22 @@ func nextEvent(deps Dependencies, previous commerce.OutboxEvent, eventType strin
 		OrderID:       previous.OrderID,
 		MerchantID:    previous.MerchantID,
 		OccurredAt:    now,
+	}
+}
+
+func systemAudit(event commerce.OutboxEvent, action string, now time.Time) commerce.AuditLog {
+	return commerce.AuditLog{
+		MerchantID:    event.MerchantID,
+		OrderID:       event.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        action,
+		CorrelationID: event.CorrelationID,
+		CreatedAt:     now,
+		Details: map[string]string{
+			"source_message_id": event.MessageID,
+			"source_event_type": event.EventType,
+		},
 	}
 }
 

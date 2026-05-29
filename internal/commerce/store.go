@@ -100,6 +100,56 @@ func (s *MemoryStore) UpdateOrderStatus(_ context.Context, orderID string, statu
 	return cloneOrder(order), nil
 }
 
+func (s *MemoryStore) RecordInventoryReserved(_ context.Context, source OutboxEvent, next OutboxEvent, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	order, ok := s.orders[source.OrderID]
+	if !ok {
+		return ErrNotFound
+	}
+	for idx := range order.Items {
+		order.Items[idx].ReservationStatus = "reserved"
+	}
+	order.UpdatedAt = next.OccurredAt
+	s.outbox = append(s.outbox, next)
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
+func (s *MemoryStore) RecordPaymentAuthorized(_ context.Context, source OutboxEvent, next OutboxEvent, payment Payment, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	order, ok := s.orders[source.OrderID]
+	if !ok {
+		return ErrNotFound
+	}
+	if payment.Provider == "" && order.Payment != nil {
+		payment.Provider = order.Payment.Provider
+	}
+	order.Payment = &payment
+	order.UpdatedAt = next.OccurredAt
+	s.outbox = append(s.outbox, next)
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
+func (s *MemoryStore) RecordShipmentCreated(_ context.Context, source OutboxEvent, next OutboxEvent, shipment Shipment, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	order, ok := s.orders[source.OrderID]
+	if !ok {
+		return ErrNotFound
+	}
+	order.Shipment = &shipment
+	order.UpdatedAt = next.OccurredAt
+	s.outbox = append(s.outbox, next)
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
 func (s *MemoryStore) OutboxEvents() []OutboxEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

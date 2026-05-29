@@ -56,12 +56,6 @@ func main() {
 		fatal(logger, "run postgres migrations", err)
 	}
 
-	publisher, err := messaging.NewRabbitPublisher(cfg.rabbitURL)
-	if err != nil {
-		fatal(logger, "create rabbit publisher", err)
-	}
-	defer publisher.Close()
-
 	rabbitConsumer, err := messaging.NewRabbitConsumer(cfg.rabbitURL)
 	if err != nil {
 		fatal(logger, "create rabbit consumer", err)
@@ -69,7 +63,7 @@ func main() {
 	defer rabbitConsumer.Close()
 
 	handler, err := fulfillment.HandlerForQueue(cfg.queue, fulfillment.Dependencies{
-		Publisher: publisher,
+		Projector: store,
 		Orders:    store,
 	})
 	if err != nil {

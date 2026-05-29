@@ -17,11 +17,10 @@ func TestWorkerHandlersAdvanceHappyPathAndCompleteOrder(t *testing.T) {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
 	created := service.OutboxEvents()[0]
-	publisher := &recordingPublisher{}
-	ids := []string{"msg_inventory", "msg_payment", "msg_shipment", "msg_completed"}
+	ids := []string{"msg_inventory", "msg_payment", "pay_authorized", "msg_shipment", "shp_created", "msg_completed"}
 	now := time.Date(2026, 5, 29, 12, 0, 0, 0, time.UTC)
 	deps := Dependencies{
-		Publisher: publisher,
+		Projector: store,
 		Orders:    store,
 		Clock:     func() time.Time { return now },
 		NewID: func(string) string {
@@ -35,21 +34,24 @@ func TestWorkerHandlersAdvanceHappyPathAndCompleteOrder(t *testing.T) {
 	if err := inventory.HandleEvent(context.Background(), created); err != nil {
 		t.Fatalf("inventory handler returned error: %v", err)
 	}
+	inventoryReserved := lastOutboxEvent(service)
 	payment := handlerForTest(t, messaging.PaymentsAuthorizeQueue, deps)
-	if err := payment.HandleEvent(context.Background(), publisher.events[0]); err != nil {
+	if err := payment.HandleEvent(context.Background(), inventoryReserved); err != nil {
 		t.Fatalf("payment handler returned error: %v", err)
 	}
+	paymentAuthorized := lastOutboxEvent(service)
 	shipment := handlerForTest(t, messaging.ShipmentsCreateQueue, deps)
-	if err := shipment.HandleEvent(context.Background(), publisher.events[1]); err != nil {
+	if err := shipment.HandleEvent(context.Background(), paymentAuthorized); err != nil {
 		t.Fatalf("shipment handler returned error: %v", err)
 	}
+	shipmentCreated := lastOutboxEvent(service)
 	finalizer := handlerForTest(t, messaging.OrdersFinalizeQueue, deps)
-	if err := finalizer.HandleEvent(context.Background(), publisher.events[2]); err != nil {
+	if err := finalizer.HandleEvent(context.Background(), shipmentCreated); err != nil {
 		t.Fatalf("finalizer handler returned error: %v", err)
 	}
 
-	if got := eventTypes(publisher.events); len(got) != 3 || got[0] != "inventory.reserved" || got[1] != "payment.authorized" || got[2] != "shipment.created" {
-		t.Fatalf("published event types = %v, want inventory/payment/shipment progression", got)
+	if got := eventTypes(service.OutboxEvents()); len(got) != 5 || got[1] != "inventory.reserved" || got[2] != "payment.authorized" || got[3] != "shipment.created" || got[4] != "order.completed" {
+		t.Fatalf("outbox event types = %v, want transactional fulfillment progression", got)
 	}
 	completed, err := store.GetOrder(context.Background(), order.OrderID)
 	if err != nil {
@@ -58,9 +60,14 @@ func TestWorkerHandlersAdvanceHappyPathAndCompleteOrder(t *testing.T) {
 	if completed.Status != commerce.StatusCompleted {
 		t.Fatalf("order status = %q, want completed", completed.Status)
 	}
-	outbox := service.OutboxEvents()
-	if got := outbox[len(outbox)-1].EventType; got != "order.completed" {
-		t.Fatalf("last outbox event = %q, want order.completed", got)
+	if completed.Items[0].ReservationStatus != "reserved" {
+		t.Fatalf("reservation status = %q, want reserved", completed.Items[0].ReservationStatus)
+	}
+	if completed.Payment == nil || completed.Payment.AuthorizationID != "pay_authorized" || completed.Payment.Status != "authorized" {
+		t.Fatalf("payment projection = %+v, want authorized payment", completed.Payment)
+	}
+	if completed.Shipment == nil || completed.Shipment.ShipmentID != "shp_created" || completed.Shipment.Status != "created" {
+		t.Fatalf("shipment projection = %+v, want created shipment", completed.Shipment)
 	}
 	logs := service.AuditLogs()
 	if got := logs[len(logs)-1].Action; got != "order.completed" {
@@ -70,7 +77,7 @@ func TestWorkerHandlersAdvanceHappyPathAndCompleteOrder(t *testing.T) {
 
 func TestHandlerForQueueRejectsUnexpectedEventType(t *testing.T) {
 	handler := handlerForTest(t, messaging.PaymentsAuthorizeQueue, Dependencies{
-		Publisher: &recordingPublisher{},
+		Projector: commerce.NewMemoryStore(),
 	})
 
 	err := handler.HandleEvent(context.Background(), commerce.OutboxEvent{
@@ -94,21 +101,17 @@ func handlerForTest(t testing.TB, queue string, deps Dependencies) messaging.Eve
 	return handler
 }
 
-type recordingPublisher struct {
-	events []commerce.OutboxEvent
-}
-
-func (p *recordingPublisher) Publish(_ context.Context, event commerce.OutboxEvent) error {
-	p.events = append(p.events, event)
-	return nil
-}
-
 func eventTypes(events []commerce.OutboxEvent) []string {
 	types := make([]string, len(events))
 	for idx, event := range events {
 		types[idx] = event.EventType
 	}
 	return types
+}
+
+func lastOutboxEvent(service *commerce.Service) commerce.OutboxEvent {
+	events := service.OutboxEvents()
+	return events[len(events)-1]
 }
 
 func validCreateOrderRequest() commerce.CreateOrderRequest {

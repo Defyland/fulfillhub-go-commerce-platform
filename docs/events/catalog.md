@@ -54,6 +54,9 @@
   entries before handlers run, ack duplicates, and nack handler failures.
 - `cmd/fulfillhub-worker` consumes inventory, payment, shipment, and order
   finalization queues for the current happy-path saga.
+- Inventory, payment, and shipment workers persist their projections and write
+  the next saga event through the transactional outbox instead of publishing
+  directly to RabbitMQ.
 - The order finalizer updates the order to `completed` and writes
   `order.completed` through the transactional outbox.
 - `TestRabbitPublisherIntegration` verifies live RabbitMQ publish and route delivery when `RABBITMQ_URL` is available.

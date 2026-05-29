@@ -2,7 +2,7 @@
 
 FulfillHub is a Go-based commerce orchestration platform for merchants that need dependable checkout, inventory reservation, payment authorization, shipment creation, and customer notifications across a failure-prone distributed environment.
 
-> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed resource profiling remains the main pending performance artifact.
+> Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, an outbox relay, RabbitMQ publisher and consumer topology, workerized fulfillment happy path with durable inventory/payment/shipment projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline. Compose-backed resource profiling remains the main pending performance artifact.
 
 ## What is this product?
 
@@ -103,9 +103,9 @@ The API surface is versioned under `/api/v1` and covers:
 FulfillHub treats asynchronous flow as a first-class concern. The current implementation records order outbox events, ships a relay process that publishes pending events to RabbitMQ, and provides a worker executable for the fulfillment happy path.
 
 - Order acceptance emits `order.created`
-- Inventory worker consumes reserve requests and emits `inventory.reserved`
-- Payment worker consumes inventory reservations and emits `payment.authorized`
-- Shipment worker consumes payment authorizations and emits `shipment.created`
+- Inventory worker consumes reserve requests, records `stock_reservations`, and writes `inventory.reserved` to the outbox
+- Payment worker consumes inventory reservations, records `payment_authorizations`, and writes `payment.authorized` to the outbox
+- Shipment worker consumes payment authorizations, records `shipments`, and writes `shipment.created` to the outbox
 - Order finalizer consumes shipment creation, durably marks the order `completed`, and writes `order.completed` to the outbox
 - Consumer idempotency is modeled through inbox deduplication, with retry queues and DLQ routing declared in the RabbitMQ topology
 
@@ -135,7 +135,7 @@ The current implementation includes Go tests for:
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
 - RabbitMQ consumer trace propagation, inbox deduplication, and ack/nack behavior
-- fulfillment worker happy-path progression through inventory, payment, shipment, and order completion
+- fulfillment worker happy-path progression through durable inventory, payment, shipment, and order completion projections
 
 The remaining planned performance layer is compose-backed resource profiling for
 PostgreSQL, RabbitMQ, Redis, and API memory under the same k6 scenarios.

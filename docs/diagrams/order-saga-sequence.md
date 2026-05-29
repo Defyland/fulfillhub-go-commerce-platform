@@ -18,19 +18,22 @@ sequenceDiagram
   Relay->>DB: poll unpublished outbox rows
   Relay->>MQ: publish order.created
   MQ->>Inventory: consume order.created
-  Inventory->>MQ: publish inventory.reserved
+  Inventory->>DB: persist stock_reservations + outbox event
+  Relay->>MQ: publish inventory.reserved
   MQ->>Payment: consume inventory.reserved
-  Payment->>MQ: publish payment.authorized
+  Payment->>DB: persist payment_authorizations + outbox event
+  Relay->>MQ: publish payment.authorized
   MQ->>Shipment: consume payment.authorized
-  Shipment->>MQ: publish shipment.created
+  Shipment->>DB: persist shipments + outbox event
+  Relay->>MQ: publish shipment.created
   MQ->>Orders: consume shipment.created
   Orders->>DB: update order completed + outbox event
   Relay->>MQ: publish order.completed
 ```
 
-The current worker executable implements the happy path above. Durable
-inventory, payment, shipment, and compensation projections are planned as the
-next worker slices.
+The current worker executable implements the happy path above with durable
+inventory, payment, and shipment projections. Compensation and notification
+projections are planned as the next worker slices.
 
 Compensation rules:
 

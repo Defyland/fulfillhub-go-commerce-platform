@@ -45,7 +45,7 @@ The current executable slice includes:
 - embedded PostgreSQL migrations and SQL-backed order/outbox/audit persistence
 - RabbitMQ publisher topology and outbox relay process
 - RabbitMQ consumer primitive with inbox deduplication and explicit ack/nack behavior
-- fulfillment worker executable for the inventory, payment, shipment, and order-completion happy path
+- fulfillment worker executable with durable inventory, payment, shipment, and order-completion happy path projections
 - live RabbitMQ topology integration coverage
 - Redis-backed rate limiting
 - inbox idempotency primitives
@@ -58,7 +58,7 @@ The current executable slice includes:
 
 It intentionally does not include yet:
 
-- durable inventory, payment, shipment, notification, and compensation projections
+- durable notification and compensation projections
 - compose-backed CPU, memory, and Redis limiter profiling
 
 The next phase must complete compensation/provider projection paths and run the
