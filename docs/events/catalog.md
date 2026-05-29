@@ -46,6 +46,7 @@
 - The PostgreSQL store can load pending outbox events and mark them published.
 - `cmd/fulfillhub-outbox-relay` publishes pending events to RabbitMQ.
 - Inbox idempotency is implemented for memory tests and PostgreSQL-backed consumers.
+- `TestRabbitPublisherIntegration` verifies live RabbitMQ publish and route delivery when `RABBITMQ_URL` is available.
 
 ## Example event payload
 

@@ -63,6 +63,28 @@ jobs:
           DATABASE_URL: postgres://fulfillhub:postgres@localhost:5432/fulfillhub_test?sslmode=disable
         run: go test ./internal/postgres -run TestPostgresStoreIntegration -count=1
 
+  rabbitmq-integration:
+    runs-on: ubuntu-latest
+    services:
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: RabbitMQ integration tests
+        env:
+          RABBITMQ_URL: amqp://guest:guest@localhost:5672/
+        run: go test ./internal/messaging -run TestRabbitPublisherIntegration -count=1
+
   docker:
     runs-on: ubuntu-latest
     steps:

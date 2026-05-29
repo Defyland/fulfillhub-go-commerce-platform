@@ -63,6 +63,7 @@ internal/commerce/store.go
 internal/messaging/inbox.go
 internal/messaging/dlq.go
 internal/messaging/rabbitmq.go
+internal/messaging/rabbitmq_integration_test.go
 internal/messaging/relay.go
 internal/messaging/relay_test.go
 internal/messaging/topology.go

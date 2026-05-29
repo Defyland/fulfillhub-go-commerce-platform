@@ -135,7 +135,7 @@ The current implementation includes Go tests for:
 - outbox relay success and publish-failure behavior
 - inbox idempotency by consumer and message ID
 
-The remaining planned test layers are live RabbitMQ integration tests and measured k6 load results once those runtime dependencies are available locally or in CI.
+The remaining planned performance layer is measured k6 load, stress, and spike results once those longer runs are executed.
 
 ## Performance benchmarks
 
@@ -256,6 +256,13 @@ Run the PostgreSQL integration test when a database is available:
 ```sh
 DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub_test?sslmode=disable' \
   go test ./internal/postgres -run TestPostgresStoreIntegration -count=1
+```
+
+Run the RabbitMQ integration test when a broker is available:
+
+```sh
+RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
+  go test ./internal/messaging -run TestRabbitPublisherIntegration -count=1
 ```
 
 Run the native benchmark:
