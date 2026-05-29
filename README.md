@@ -186,6 +186,10 @@ observability expansion after the HTTP runtime baseline.
 - Threat modeling covers duplicate requests, replay attacks, stock poisoning, and credential leakage
 
 The explicit auth strategy is captured in [docs/adr/0003-authentication-and-authorization.md](./docs/adr/0003-authentication-and-authorization.md).
+The current threat model and endpoint authorization matrix live in:
+
+- [docs/security/threat-model.md](./docs/security/threat-model.md)
+- [docs/security/authorization-matrix.md](./docs/security/authorization-matrix.md)
 
 ## Trade-offs and decisions
 

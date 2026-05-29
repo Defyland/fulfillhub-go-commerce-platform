@@ -1,6 +1,11 @@
 # FulfillHub Engineering Baseline
 
-This repository applies the portfolio-wide engineering spec to a commerce orchestration domain. The current state includes an executable Go API slice, PostgreSQL persistence, RabbitMQ outbox relay code, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, k6 scripts, Grafana dashboard definition, product narrative, architecture decisions, contracts, quality gates, and operational expectations.
+This repository applies the portfolio-wide engineering spec to a commerce
+orchestration domain. The current state includes an executable Go API slice,
+PostgreSQL persistence, RabbitMQ outbox relay code, Redis rate limiting, inbox
+idempotency, DLQ replay tooling, provider adapters, k6 scripts and measured
+results, Grafana dashboard definition, product narrative, architecture
+decisions, contracts, quality gates, and operational expectations.
 
 ## Required artifacts in this repository
 
@@ -10,6 +15,7 @@ This repository applies the portfolio-wide engineering spec to a commerce orches
 - Architecture notes and data model in `docs/architecture/`
 - Architecture decision records in `docs/adr/`
 - Event topology in `docs/events/`
+- Threat model and authorization matrix in `docs/security/`
 - Visual diagrams in `docs/diagrams/`
 - Performance methodology in `docs/benchmarks/` and `benchmarks/`
 - Operational failure handling in `docs/runbooks/`
@@ -34,20 +40,26 @@ The current executable slice includes:
 - Go module scaffolding
 - HTTP order creation, lookup, and cancellation handlers
 - health, readiness, and metrics endpoints
+- structured HTTP request logs and OpenTelemetry HTTP spans
 - in-memory order store and outbox event recording
-- embedded PostgreSQL migrations and SQL-backed order/outbox persistence
+- embedded PostgreSQL migrations and SQL-backed order/outbox/audit persistence
 - RabbitMQ publisher topology and outbox relay process
+- live RabbitMQ topology integration coverage
 - Redis-backed rate limiting
 - inbox idempotency primitives
 - DLQ replay command
 - payment and shipment provider adapter interfaces
 - k6 smoke, load, stress, and spike scripts
+- measured k6 smoke, load, stress, and spike results
 - Grafana dashboard definition
-- unit, request, authorization, validation, and native benchmark coverage
+- unit, request, authorization, validation, audit, integration, race, and native benchmark coverage
 
 It intentionally does not include yet:
 
-- live RabbitMQ integration tests
-- k6 network load test results
+- production JWT validation for operations access
+- durable DLQ replay audit records
+- SQL and RabbitMQ trace instrumentation
+- compose-backed CPU, memory, queue-depth, and Redis limiter profiling
 
-The next phase must add live RabbitMQ integration tests and measured k6 results while preserving the contracts and decisions already documented here.
+The next phase must deepen security and observability around operations tooling
+and run the measured performance matrix against the full Docker Compose stack.

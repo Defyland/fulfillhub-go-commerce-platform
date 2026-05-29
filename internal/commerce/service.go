@@ -94,14 +94,24 @@ func (s *Service) CreateOrder(merchantID, idempotencyKey, correlationID string, 
 		OccurredAt:    now,
 	}
 
-	return s.store.InsertOrder(merchantID, idempotencyKey, order, event)
+	audit := AuditLog{
+		MerchantID:    merchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "merchant",
+		ActorID:       merchantID,
+		Action:        "order.create",
+		CorrelationID: correlationID,
+		CreatedAt:     now,
+	}
+
+	return s.store.InsertOrder(merchantID, idempotencyKey, order, event, audit)
 }
 
 func (s *Service) GetOrder(orderID string) (*Order, error) {
 	return s.store.GetOrder(orderID)
 }
 
-func (s *Service) CancelOrder(orderID, correlationID string) (*Order, error) {
+func (s *Service) CancelOrder(orderID, correlationID string, actor AuditActor) (*Order, error) {
 	order, err := s.store.GetOrder(orderID)
 	if err != nil {
 		return nil, err
@@ -119,12 +129,25 @@ func (s *Service) CancelOrder(orderID, correlationID string) (*Order, error) {
 		MerchantID:    order.MerchantID,
 		OccurredAt:    now,
 	}
+	audit := AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       orderID,
+		ActorType:     strings.TrimSpace(actor.Type),
+		ActorID:       strings.TrimSpace(actor.ID),
+		Action:        "order.cancel_requested",
+		CorrelationID: correlationID,
+		CreatedAt:     now,
+	}
 
-	return s.store.UpdateOrderStatus(orderID, StatusCancellationPending, now, event)
+	return s.store.UpdateOrderStatus(orderID, StatusCancellationPending, now, event, audit)
 }
 
 func (s *Service) OutboxEvents() []OutboxEvent {
 	return s.store.OutboxEvents()
+}
+
+func (s *Service) AuditLogs() []AuditLog {
+	return s.store.AuditLogs()
 }
 
 func (s *Service) nextID(prefix string) string {

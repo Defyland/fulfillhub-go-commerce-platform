@@ -29,6 +29,16 @@ func TestCreateOrderDerivesMerchantAndWritesOutbox(t *testing.T) {
 	if events[0].EventType != "order.created" {
 		t.Fatalf("event type = %q, want order.created", events[0].EventType)
 	}
+	logs := service.AuditLogs()
+	if len(logs) != 1 {
+		t.Fatalf("audit logs = %d, want 1", len(logs))
+	}
+	if logs[0].Action != "order.create" {
+		t.Fatalf("audit action = %q, want order.create", logs[0].Action)
+	}
+	if logs[0].ActorID != "mer_demo" || logs[0].ActorType != "merchant" {
+		t.Fatalf("audit actor = %s/%s, want merchant/mer_demo", logs[0].ActorType, logs[0].ActorID)
+	}
 }
 
 func TestCreateOrderIdempotencyReturnsExistingOrder(t *testing.T) {
@@ -50,6 +60,42 @@ func TestCreateOrderIdempotencyReturnsExistingOrder(t *testing.T) {
 	}
 	if got := len(service.OutboxEvents()); got != 1 {
 		t.Fatalf("outbox events after replay = %d, want 1", got)
+	}
+	if got := len(service.AuditLogs()); got != 1 {
+		t.Fatalf("audit logs after replay = %d, want 1", got)
+	}
+}
+
+func TestCancelOrderWritesAuditLog(t *testing.T) {
+	service := NewService(NewMemoryStore())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+
+	cancelled, err := service.CancelOrder(order.OrderID, "cor_cancel", AuditActor{
+		Type: "merchant_user",
+		ID:   "usr_93842",
+	})
+	if err != nil {
+		t.Fatalf("CancelOrder returned error: %v", err)
+	}
+	if cancelled.Status != StatusCancellationPending {
+		t.Fatalf("status = %q, want cancellation_pending", cancelled.Status)
+	}
+	logs := service.AuditLogs()
+	if len(logs) != 2 {
+		t.Fatalf("audit logs = %d, want 2", len(logs))
+	}
+	cancelLog := logs[1]
+	if cancelLog.Action != "order.cancel_requested" {
+		t.Fatalf("cancel audit action = %q, want order.cancel_requested", cancelLog.Action)
+	}
+	if cancelLog.ActorType != "merchant_user" || cancelLog.ActorID != "usr_93842" {
+		t.Fatalf("cancel audit actor = %s/%s, want merchant_user/usr_93842", cancelLog.ActorType, cancelLog.ActorID)
+	}
+	if cancelLog.CorrelationID != "cor_cancel" {
+		t.Fatalf("cancel audit correlation = %q, want cor_cancel", cancelLog.CorrelationID)
 	}
 }
 

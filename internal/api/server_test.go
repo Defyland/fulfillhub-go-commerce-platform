@@ -271,6 +271,9 @@ func TestCancelOrderValidatesBody(t *testing.T) {
 	server.ServeHTTP(rec, req)
 
 	assertStatus(t, rec, http.StatusUnprocessableEntity)
+	if !strings.Contains(rec.Body.String(), "requested_by.type") {
+		t.Fatalf("response body does not include requested_by.type: %s", rec.Body.String())
+	}
 }
 
 func TestDuplicateOrderReturnsConflict(t *testing.T) {

@@ -8,10 +8,26 @@ import (
 )
 
 type Store interface {
-	InsertOrder(merchantID, idempotencyKey string, order *Order, event OutboxEvent) (*Order, bool, error)
+	InsertOrder(merchantID, idempotencyKey string, order *Order, event OutboxEvent, audit AuditLog) (*Order, bool, error)
 	GetOrder(orderID string) (*Order, error)
-	UpdateOrderStatus(orderID string, status OrderStatus, now time.Time, event OutboxEvent) (*Order, error)
+	UpdateOrderStatus(orderID string, status OrderStatus, now time.Time, event OutboxEvent, audit AuditLog) (*Order, error)
 	OutboxEvents() []OutboxEvent
+	AuditLogs() []AuditLog
+}
+
+type AuditActor struct {
+	Type string
+	ID   string
+}
+
+type AuditLog struct {
+	MerchantID    string
+	OrderID       string
+	ActorType     string
+	ActorID       string
+	Action        string
+	CorrelationID string
+	CreatedAt     time.Time
 }
 
 type MemoryStore struct {
@@ -20,6 +36,7 @@ type MemoryStore struct {
 	ordersByExternal    map[string]string
 	ordersByIdempotency map[string]string
 	outbox              []OutboxEvent
+	auditLogs           []AuditLog
 	publishedOutbox     map[string]time.Time
 }
 
@@ -32,7 +49,7 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
-func (s *MemoryStore) InsertOrder(merchantID, idempotencyKey string, order *Order, event OutboxEvent) (*Order, bool, error) {
+func (s *MemoryStore) InsertOrder(merchantID, idempotencyKey string, order *Order, event OutboxEvent, audit AuditLog) (*Order, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -50,6 +67,7 @@ func (s *MemoryStore) InsertOrder(merchantID, idempotencyKey string, order *Orde
 	s.ordersByExternal[externalRef] = order.OrderID
 	s.ordersByIdempotency[idempotencyRef] = order.OrderID
 	s.outbox = append(s.outbox, event)
+	s.auditLogs = append(s.auditLogs, audit)
 
 	return cloneOrder(order), false, nil
 }
@@ -65,7 +83,7 @@ func (s *MemoryStore) GetOrder(orderID string) (*Order, error) {
 	return cloneOrder(order), nil
 }
 
-func (s *MemoryStore) UpdateOrderStatus(orderID string, status OrderStatus, now time.Time, event OutboxEvent) (*Order, error) {
+func (s *MemoryStore) UpdateOrderStatus(orderID string, status OrderStatus, now time.Time, event OutboxEvent, audit AuditLog) (*Order, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -76,6 +94,7 @@ func (s *MemoryStore) UpdateOrderStatus(orderID string, status OrderStatus, now 
 	order.Status = status
 	order.UpdatedAt = now
 	s.outbox = append(s.outbox, event)
+	s.auditLogs = append(s.auditLogs, audit)
 
 	return cloneOrder(order), nil
 }
@@ -87,6 +106,15 @@ func (s *MemoryStore) OutboxEvents() []OutboxEvent {
 	events := make([]OutboxEvent, len(s.outbox))
 	copy(events, s.outbox)
 	return events
+}
+
+func (s *MemoryStore) AuditLogs() []AuditLog {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	logs := make([]AuditLog, len(s.auditLogs))
+	copy(logs, s.auditLogs)
+	return logs
 }
 
 func (s *MemoryStore) PendingOutboxEvents(_ context.Context, limit int) ([]OutboxEvent, error) {

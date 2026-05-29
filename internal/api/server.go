@@ -303,9 +303,10 @@ func (s *Server) cancelOrder(w http.ResponseWriter, r *http.Request, orderID, re
 		s.writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.", false, nil, requestID, correlationID)
 		return
 	}
-	if strings.TrimSpace(cancelReq.Reason) == "" || strings.TrimSpace(cancelReq.RequestedBy.ID) == "" {
+	if strings.TrimSpace(cancelReq.Reason) == "" || strings.TrimSpace(cancelReq.RequestedBy.Type) == "" || strings.TrimSpace(cancelReq.RequestedBy.ID) == "" {
 		s.writeError(w, http.StatusUnprocessableEntity, "validation_failed", "Request body contains invalid fields.", false, []errorDetail{
 			{Field: "reason", Issue: "is required"},
+			{Field: "requested_by.type", Issue: "is required"},
 			{Field: "requested_by.id", Issue: "is required"},
 		}, requestID, correlationID)
 		return
@@ -320,7 +321,10 @@ func (s *Server) cancelOrder(w http.ResponseWriter, r *http.Request, orderID, re
 		return
 	}
 
-	order, err = s.service.CancelOrder(orderID, correlationID)
+	order, err = s.service.CancelOrder(orderID, correlationID, commerce.AuditActor{
+		Type: cancelReq.RequestedBy.Type,
+		ID:   cancelReq.RequestedBy.ID,
+	})
 	if err != nil {
 		s.handleCommerceError(w, err, requestID, correlationID)
 		return

@@ -41,7 +41,7 @@ func (s *Store) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) InsertOrder(merchantID, idempotencyKey string, order *commerce.Order, event commerce.OutboxEvent) (*commerce.Order, bool, error) {
+func (s *Store) InsertOrder(merchantID, idempotencyKey string, order *commerce.Order, event commerce.OutboxEvent, audit commerce.AuditLog) (*commerce.Order, bool, error) {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -99,6 +99,9 @@ func (s *Store) InsertOrder(merchantID, idempotencyKey string, order *commerce.O
 	if err := insertOutboxEvent(ctx, tx, event); err != nil {
 		return nil, false, err
 	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return nil, false, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, false, fmt.Errorf("commit insert order: %w", err)
@@ -110,7 +113,7 @@ func (s *Store) GetOrder(orderID string) (*commerce.Order, error) {
 	return getOrderTx(context.Background(), s.db, orderID)
 }
 
-func (s *Store) UpdateOrderStatus(orderID string, status commerce.OrderStatus, now time.Time, event commerce.OutboxEvent) (*commerce.Order, error) {
+func (s *Store) UpdateOrderStatus(orderID string, status commerce.OrderStatus, now time.Time, event commerce.OutboxEvent, audit commerce.AuditLog) (*commerce.Order, error) {
 	ctx := context.Background()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -135,6 +138,9 @@ func (s *Store) UpdateOrderStatus(orderID string, status commerce.OrderStatus, n
 	}
 
 	if err := insertOutboxEvent(ctx, tx, event); err != nil {
+		return nil, err
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
 		return nil, err
 	}
 	order, err := getOrderTx(ctx, tx, orderID)
@@ -167,6 +173,32 @@ func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 		events = append(events, event)
 	}
 	return events
+}
+
+func (s *Store) AuditLogs() []commerce.AuditLog {
+	rows, err := s.db.QueryContext(context.Background(), `
+		SELECT merchant_id, order_id, actor_type, actor_id, action, correlation_id, created_at
+		FROM audit_logs
+		ORDER BY created_at ASC, id ASC
+	`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var logs []commerce.AuditLog
+	for rows.Next() {
+		var log commerce.AuditLog
+		var orderID sql.NullString
+		if err := rows.Scan(&log.MerchantID, &orderID, &log.ActorType, &log.ActorID, &log.Action, &log.CorrelationID, &log.CreatedAt); err != nil {
+			return nil
+		}
+		if orderID.Valid {
+			log.OrderID = orderID.String
+		}
+		logs = append(logs, log)
+	}
+	return logs
 }
 
 func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) ([]commerce.OutboxEvent, error) {
@@ -326,6 +358,24 @@ func insertOutboxEvent(ctx context.Context, tx *sql.Tx, event commerce.OutboxEve
 		return fmt.Errorf("insert outbox event: %w", err)
 	}
 	return nil
+}
+
+func insertAuditLog(ctx context.Context, tx *sql.Tx, audit commerce.AuditLog) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO audit_logs (
+			merchant_id, order_id, actor_type, actor_id, action, correlation_id, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, audit.MerchantID, nullableString(audit.OrderID), audit.ActorType, audit.ActorID, audit.Action, audit.CorrelationID, audit.CreatedAt); err != nil {
+		return fmt.Errorf("insert audit log: %w", err)
+	}
+	return nil
+}
+
+func nullableString(value string) sql.NullString {
+	if value == "" {
+		return sql.NullString{}
+	}
+	return sql.NullString{String: value, Valid: true}
 }
 
 func nullablePaymentProvider(order *commerce.Order) sql.NullString {

@@ -36,8 +36,16 @@ One transaction must:
 
 1. insert `orders`
 2. insert `order_items`
-3. insert initial `audit_logs` row
-4. insert `outbox_events` row for `order.created`
+3. insert `outbox_events` row for `order.created`
+4. insert initial `audit_logs` row for `order.create`
+
+### Order cancellation
+
+One transaction must:
+
+1. update `orders.status` and optimistic `version`
+2. insert `outbox_events` row for `order.cancel_requested`
+3. insert `audit_logs` row for `order.cancel_requested`
 
 ### Inventory reservation
 

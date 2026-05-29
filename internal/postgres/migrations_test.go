@@ -74,8 +74,17 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		MerchantID:    order.MerchantID,
 		OccurredAt:    now,
 	}
+	audit := commerce.AuditLog{
+		MerchantID:    order.MerchantID,
+		OrderID:       order.OrderID,
+		ActorType:     "merchant",
+		ActorID:       order.MerchantID,
+		Action:        "order.create",
+		CorrelationID: event.CorrelationID,
+		CreatedAt:     now,
+	}
 
-	created, replayed, err := store.InsertOrder(order.MerchantID, "idem_pg_test_"+strings.ReplaceAll(t.Name(), "/", "_"), order, event)
+	created, replayed, err := store.InsertOrder(order.MerchantID, "idem_pg_test_"+strings.ReplaceAll(t.Name(), "/", "_"), order, event, audit)
 	if err != nil {
 		t.Fatalf("insert order: %v", err)
 	}
@@ -95,6 +104,14 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	}
 	if got := len(store.OutboxEvents()); got == 0 {
 		t.Fatal("expected at least one outbox event")
+	}
+	auditLogs := store.AuditLogs()
+	if len(auditLogs) == 0 {
+		t.Fatal("expected at least one audit log")
+	}
+	lastAudit := auditLogs[len(auditLogs)-1]
+	if lastAudit.Action != "order.create" || lastAudit.ActorID != order.MerchantID {
+		t.Fatalf("last audit log = %+v, want order.create by merchant", lastAudit)
 	}
 	pending, err := store.PendingOutboxEvents(ctx, 10)
 	if err != nil {
