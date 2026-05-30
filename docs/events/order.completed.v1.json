@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Defyland/fulfillhub-go-commerce-platform/docs/events/order.completed.v1.json",
+  "title": "order.completed v1",
+  "type": "object",
+  "required": [
+    "message_id",
+    "event_type",
+    "schema_version",
+    "occurred_at",
+    "producer",
+    "merchant_id",
+    "order_id",
+    "correlation_id",
+    "causation_id",
+    "payload"
+  ],
+  "properties": {
+    "message_id": { "type": "string", "minLength": 1 },
+    "event_type": { "type": "string", "const": "order.completed" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string", "minLength": 1 },
+    "merchant_id": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "correlation_id": { "type": "string", "minLength": 1 },
+    "causation_id": { "type": "string", "minLength": 1 },
+    "payload": {
+      "type": "object",
+      "required": ["order_status", "completed_at"],
+      "properties": {
+        "order_status": { "type": "string", "const": "completed" },
+        "completed_at": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

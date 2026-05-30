@@ -59,3 +59,13 @@
 - CI runs Go tests, race detection, OpenAPI linting, markdown linting, Docker
   build validation, production-readiness validation, supply-chain scans, and
   gitleaks.
+
+## Transversal architecture additions
+
+- Saga events must follow the versioned contract policy in `docs/events/README.md`.
+- Event-specific duplicate delivery, payment, inventory, tenant isolation, and
+  replay risks are tracked in `docs/events/threat-model.md`.
+- Every consumer must be safe for duplicate delivery and replay from DLQ.
+- Payment and inventory handlers must preserve `correlation_id` and `causation_id` for post-incident reconstruction.
+- Tenant isolation must be validated on both synchronous APIs and asynchronous projections.
+- Manual replay is an operations action and must remain auditable.

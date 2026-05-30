@@ -123,7 +123,7 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
 - Consumer idempotency is modeled through inbox deduplication, bounded retry
   queues, and DLQ routing in the RabbitMQ topology
 
-The message catalog and routing design are documented in [docs/events/catalog.md](./docs/events/catalog.md) and [docs/diagrams/order-saga-sequence.md](./docs/diagrams/order-saga-sequence.md).
+The message catalog and routing design are documented in [docs/events/catalog.md](./docs/events/catalog.md), the versioned contract policy in [docs/events/README.md](./docs/events/README.md), the event threat model in [docs/events/threat-model.md](./docs/events/threat-model.md), and the saga diagram in [docs/diagrams/order-saga-sequence.md](./docs/diagrams/order-saga-sequence.md).
 
 ## Database design
 

@@ -1,5 +1,9 @@
 # Event Catalog
 
+Versioned event envelope, compatibility, DLQ, and ordering rules are defined in
+[README.md](./README.md). Event-specific security risks and replay controls are
+defined in [threat-model.md](./threat-model.md).
+
 ## Exchange topology
 
 | Exchange | Type | Purpose |
@@ -94,11 +98,22 @@
 ```json
 {
   "message_id": "msg_01hzy81xqk1v9kyxrf0g7m6w1j",
+  "schema_version": 1,
+  "producer": "payment-worker",
   "correlation_id": "cor_01hzy72wf4ekcg7fbc7r8rtn2r",
   "causation_id": "msg_01hzy7ztck3kc67mw4jv0v4f8g",
   "event_type": "payment.authorized",
   "order_id": "ord_01hzy72wf4ekcg7fbc7r8rtn2r",
   "merchant_id": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
-  "occurred_at": "2026-05-28T20:15:12Z"
+  "occurred_at": "2026-05-28T20:15:12Z",
+  "payload": {
+    "order_status": "payment_authorized",
+    "payment": {
+      "provider": "fake-payment",
+      "authorization_id": "pay_01hzy8",
+      "amount": 20100,
+      "currency": "USD"
+    }
+  }
 }
 ```

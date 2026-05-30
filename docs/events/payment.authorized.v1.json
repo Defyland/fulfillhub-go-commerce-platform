@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Defyland/fulfillhub-go-commerce-platform/docs/events/payment.authorized.v1.json",
+  "title": "payment.authorized v1",
+  "type": "object",
+  "required": [
+    "message_id",
+    "event_type",
+    "schema_version",
+    "occurred_at",
+    "producer",
+    "merchant_id",
+    "order_id",
+    "correlation_id",
+    "causation_id",
+    "payload"
+  ],
+  "properties": {
+    "message_id": { "type": "string", "minLength": 1 },
+    "event_type": { "type": "string", "const": "payment.authorized" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string", "minLength": 1 },
+    "merchant_id": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "correlation_id": { "type": "string", "minLength": 1 },
+    "causation_id": { "type": "string", "minLength": 1 },
+    "payload": {
+      "type": "object",
+      "required": ["order_status", "payment"],
+      "properties": {
+        "order_status": { "type": "string", "const": "payment_authorized" },
+        "payment": {
+          "type": "object",
+          "required": ["provider", "authorization_id", "amount", "currency"],
+          "properties": {
+            "provider": { "type": "string", "minLength": 1 },
+            "authorization_id": { "type": "string", "minLength": 1 },
+            "amount": { "type": "integer", "minimum": 0 },
+            "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

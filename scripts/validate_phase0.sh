@@ -113,6 +113,7 @@ internal/providers/shipment.go
 internal/providers/webhook.go
 internal/providers/webhook_test.go
 internal/spec/consistency_test.go
+internal/spec/event_contracts_test.go
 internal/spec/production_readiness_test.go
 docs/production-readiness.md
 docs/engineering-baseline.md
@@ -127,9 +128,17 @@ docs/benchmarks/results-status.md
 docs/diagrams/system-context.md
 docs/diagrams/order-saga-sequence.md
 docs/events/catalog.md
+docs/events/README.md
+docs/events/threat-model.md
+docs/events/order.created.v1.json
+docs/events/inventory.reserved.v1.json
+docs/events/payment.authorized.v1.json
+docs/events/shipment.created.v1.json
+docs/events/order.completed.v1.json
 docs/observability/grafana-dashboard.json
 docs/runbooks/incident-response.md
 docs/runbooks/deployment-rollback.md
+docs/runbooks/event-contract-breaking-change.md
 docs/runbooks/slo-alert-response.md
 docs/runbooks/data-protection.md
 docs/security/threat-model.md
@@ -141,6 +150,8 @@ docs/adr/0002-rabbitmq-outbox-inbox.md
 docs/adr/0003-authentication-and-authorization.md
 docs/adr/0004-local-otel-collector.md
 docs/adr/0005-order-state-machine-provider-boundaries.md
+docs/adr/0006-versioned-event-contracts.md
+docs/architecture/deployment-readiness.md
 benchmarks/baseline.md
 benchmarks/k6/smoke.js
 benchmarks/k6/load.js
