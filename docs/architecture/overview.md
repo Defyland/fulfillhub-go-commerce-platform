@@ -1,6 +1,27 @@
 # Architecture Overview
 
-FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice keeps an in-memory store for explicit local demos and fast tests, requires PostgreSQL-backed order/outbox persistence for production-like API runs unless `ALLOW_IN_MEMORY_STORE=true` is set, includes RabbitMQ relay and worker processes, enables Redis-backed rate limiting when `REDIS_URL` is configured, and exports OpenTelemetry traces to stdout or an OTLP collector when configured.
+FulfillHub starts as a modular monolith in Go with Hexagonal/Clean boundaries,
+pragmatic DDD modules, transaction boundaries, and event contracts. This is not
+MVC with renamed folders: HTTP, CLI, and RabbitMQ consumers are primary
+adapters; use cases orchestrate application workflow; domain code owns
+invariants; ports describe required external capabilities; and Postgres,
+RabbitMQ, Redis, provider clients, and fakes are secondary adapters.
+
+The current executable slice keeps an in-memory store for explicit local demos
+and fast tests, requires PostgreSQL-backed order/outbox persistence for
+production-like API runs unless `ALLOW_IN_MEMORY_STORE=true` is set, includes
+RabbitMQ relay and worker processes, enables Redis-backed rate limiting when
+`REDIS_URL` is configured, and exports OpenTelemetry traces to stdout or an
+OTLP collector when configured.
+
+Detailed boundaries are documented in:
+
+- [ports-and-adapters.md](./ports-and-adapters.md)
+- [go-architecture.md](./go-architecture.md)
+- [module-boundaries.md](./module-boundaries.md)
+- [dependency-rule.md](./dependency-rule.md)
+- [testing-strategy.md](./testing-strategy.md)
+- [../verification/architecture-evidence.md](../verification/architecture-evidence.md)
 
 ## System context
 

@@ -41,7 +41,7 @@ FulfillHub solves that by centralizing orchestration and explicitly designing fo
 
 ## Architecture overview
 
-The current implementation is a Go modular monolith with strongly isolated packages and asynchronous boundaries represented through a transactional outbox. Runtime dependencies are available through Docker Compose so reliability, observability, and performance evidence are measured against the same local topology.
+The current implementation is a Go modular monolith with Hexagonal/Clean architecture, pragmatic DDD boundaries, and asynchronous boundaries represented through a transactional outbox. It is intentionally not MVC with renamed folders: HTTP, CLI, workers, and RabbitMQ consumers are primary adapters; application use cases orchestrate workflow and idempotency; domain code owns invariants; ports describe required external capabilities; and Postgres, RabbitMQ, Redis, provider clients, and fakes are secondary adapters. Runtime dependencies are available through Docker Compose so reliability, observability, and performance evidence are measured against the same local topology.
 
 - HTTP API entrypoint for merchant and operations access
 - Domain modules for orders, inventory, payments, shipments, notifications, and reporting
@@ -50,7 +50,14 @@ The current implementation is a Go modular monolith with strongly isolated packa
 - Redis-backed rate limiting when `REDIS_URL` is configured
 - OpenTelemetry Collector, Prometheus, and Grafana for observability
 
-More detail lives in [docs/architecture/overview.md](./docs/architecture/overview.md) and [docs/diagrams/system-context.md](./docs/diagrams/system-context.md).
+More detail lives in:
+
+- [docs/architecture/overview.md](./docs/architecture/overview.md)
+- [docs/architecture/ports-and-adapters.md](./docs/architecture/ports-and-adapters.md)
+- [docs/architecture/go-architecture.md](./docs/architecture/go-architecture.md)
+- [docs/architecture/module-boundaries.md](./docs/architecture/module-boundaries.md)
+- [docs/architecture/dependency-rule.md](./docs/architecture/dependency-rule.md)
+- [docs/diagrams/system-context.md](./docs/diagrams/system-context.md)
 
 ## Tech stack
 
@@ -165,10 +172,15 @@ The current implementation includes Go tests for:
 - shipment provider failure handling with durable `shipment.failed` outbox events
 - fulfillment worker happy-path progression through durable inventory, payment, shipment, and order completion projections
 - PostgreSQL inventory reservation tests that decrement `inventory_items`, persist the reservation warehouse, and restore available stock during compensation
+- architecture boundary specs that fail if HTTP DTOs enter the domain, infra leaks into `internal/commerce`, or required Ports & Adapters documentation is removed
 
 The performance layer includes compose-backed smoke, load, stress, and spike
 resource profiling for PostgreSQL, RabbitMQ, Redis, RabbitMQ queue drain, and
 API memory under the same k6 scenarios.
+
+See [docs/architecture/testing-strategy.md](./docs/architecture/testing-strategy.md)
+and [docs/verification/architecture-evidence.md](./docs/verification/architecture-evidence.md)
+for the senior-review evidence trail.
 
 ## Performance benchmarks
 
@@ -239,9 +251,11 @@ The current threat model and endpoint authorization matrix live in:
 ## Trade-offs and decisions
 
 - Start with a modular monolith instead of early microservices to keep consistency work tractable
+- Keep the monolith modular through Hexagonal/Clean boundaries so orders, inventory, payments, shipping, and saga modules can split into services later without rewriting domain rules
 - Prefer RabbitMQ over Kafka because command-style routing, retries, and queue ownership are central here
 - Use orchestration-style sagas because the order lifecycle needs explicit operational visibility
 - Keep OpenAPI contract-first to stabilize integrations as handlers evolve
+- Keep internal Protobuf/gRPC contracts under `proto/` as future process-boundary contracts while REST/OpenAPI remains the public external API
 - Keep provider adapters lightweight while persisting durable inventory, payment, shipment, and compensation projections
 
 The most important architecture decisions are recorded in:
@@ -251,6 +265,7 @@ The most important architecture decisions are recorded in:
 - [docs/adr/0003-authentication-and-authorization.md](./docs/adr/0003-authentication-and-authorization.md)
 - [docs/adr/0004-local-otel-collector.md](./docs/adr/0004-local-otel-collector.md)
 - [docs/architecture/senior-technical-assessment.md](./docs/architecture/senior-technical-assessment.md)
+- [docs/verification/architecture-evidence.md](./docs/verification/architecture-evidence.md)
 
 ## How to run locally
 

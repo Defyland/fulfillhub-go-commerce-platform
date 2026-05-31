@@ -21,6 +21,10 @@ history.
   persistence, messaging, fulfillment, and provider adapters are separated by
   narrow interfaces instead of leaking infrastructure details through the
   domain.
+- The code now makes the Ports & Adapters decision executable: API request DTOs
+  map into use-case commands, domain commands avoid HTTP tags, and architecture
+  specs fail if `internal/commerce` starts importing adapter or infrastructure
+  packages.
 - Reliability concerns were designed in early: transactional outbox, inbox
   deduplication, retry queues, DLQs, causation IDs, correlation IDs, and DLQ
   replay audit logging are senior concerns, not junior afterthoughts.
@@ -73,6 +77,15 @@ history.
 - Added production SRE/security artifacts: Prometheus alert rules with
   runbook URLs, SLO response guidance, data protection policy, secret rotation
   model, supply-chain release policy, and CI validation for the readiness pack.
+- Added explicit Hexagonal/Clean architecture docs, module-boundary docs,
+  dependency-rule docs, testing-strategy docs, and
+  `docs/verification/architecture-evidence.md` as objective senior-review
+  evidence.
+- Removed HTTP request DTO leakage from the order creation use case by keeping
+  JSON-tagged request structs in `internal/api` and mapping them to
+  `commerce.CreateOrderCommand`.
+- Added `internal/spec/architecture_boundaries_test.go` so DTO/domain/adapter
+  boundaries are checked by the Go test suite.
 
 ## Remaining recommendations
 

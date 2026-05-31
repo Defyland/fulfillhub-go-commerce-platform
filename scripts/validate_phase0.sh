@@ -35,6 +35,7 @@ docs/events
 docs/observability
 docs/runbooks
 docs/security
+docs/verification
 benchmarks
 benchmarks/k6
 benchmarks/results
@@ -117,6 +118,7 @@ internal/providers/shipment.go
 internal/providers/webhook.go
 internal/providers/webhook_test.go
 internal/spec/consistency_test.go
+internal/spec/architecture_boundaries_test.go
 internal/spec/event_contracts_test.go
 internal/spec/protobuf_contracts_test.go
 internal/spec/production_readiness_test.go
@@ -134,7 +136,13 @@ docs/api/error-format.md
 docs/architecture/overview.md
 docs/architecture/domain-model.md
 docs/architecture/database-design.md
+docs/architecture/ports-and-adapters.md
+docs/architecture/go-architecture.md
+docs/architecture/module-boundaries.md
+docs/architecture/dependency-rule.md
+docs/architecture/testing-strategy.md
 docs/architecture/senior-technical-assessment.md
+docs/verification/architecture-evidence.md
 docs/benchmarks/methodology.md
 docs/benchmarks/results-status.md
 docs/contracts/grpc-error-mapping.md
