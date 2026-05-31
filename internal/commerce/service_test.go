@@ -171,6 +171,36 @@ func TestCancelOrderWritesAuditLog(t *testing.T) {
 	if events[1].CausationID != events[1].MessageID {
 		t.Fatalf("cancel causation id = %q, want message id %q", events[1].CausationID, events[1].MessageID)
 	}
+	if events[1].Payload["reason"] != "customer_requested" {
+		t.Fatalf("cancel event reason = %v, want customer_requested", events[1].Payload["reason"])
+	}
+	requestedBy, ok := events[1].Payload["requested_by"].(map[string]any)
+	if !ok {
+		t.Fatalf("cancel event requested_by = %T, want object", events[1].Payload["requested_by"])
+	}
+	if requestedBy["type"] != "merchant_user" || requestedBy["id"] != "usr_93842" {
+		t.Fatalf("cancel event requested_by = %+v, want merchant_user/usr_93842", requestedBy)
+	}
+}
+
+func TestCancelOrderValidatesActorContractFields(t *testing.T) {
+	service := NewService(NewMemoryStore())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+
+	_, err = service.CancelOrder(order.OrderID, "cor_cancel", AuditActor{})
+	var validation ValidationError
+	if !errors.As(err, &validation) {
+		t.Fatalf("CancelOrder error = %v, want ValidationError", err)
+	}
+	if len(validation.Fields) != 3 {
+		t.Fatalf("validation fields = %+v, want reason and requested_by fields", validation.Fields)
+	}
+	if got := len(service.OutboxEvents()); got != 1 {
+		t.Fatalf("outbox events after rejected cancel = %d, want unchanged 1", got)
+	}
 }
 
 func TestCreateOrderRejectsDuplicateExternalOrderID(t *testing.T) {

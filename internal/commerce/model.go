@@ -2,6 +2,7 @@ package commerce
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
 
@@ -215,6 +216,41 @@ func DefaultEventPayload(event OutboxEvent) map[string]any {
 		payload["failure"] = map[string]any{
 			"stage":  stage,
 			"reason": "unspecified",
+		}
+	}
+	return payload
+}
+
+func OrderStatusEventPayload(status OrderStatus, at time.Time, audit AuditLog, existing map[string]any) map[string]any {
+	payload := make(map[string]any, len(existing)+3)
+	for key, value := range existing {
+		payload[key] = value
+	}
+	payload["order_status"] = string(status)
+	switch status {
+	case StatusCancellationPending:
+		if _, ok := payload["reason"]; !ok {
+			payload["reason"] = strings.TrimSpace(audit.Details["reason"])
+		}
+		if _, ok := payload["requested_by"]; !ok {
+			payload["requested_by"] = map[string]any{
+				"type": strings.TrimSpace(audit.ActorType),
+				"id":   strings.TrimSpace(audit.ActorID),
+			}
+		}
+	case StatusCompleted:
+		if _, ok := payload["completed_at"]; !ok {
+			payload["completed_at"] = at.UTC().Format(time.RFC3339Nano)
+		}
+	case StatusCancelled:
+		if _, ok := payload["cancelled_at"]; !ok {
+			payload["cancelled_at"] = at.UTC().Format(time.RFC3339Nano)
+		}
+	case StatusManualReview:
+		if _, ok := payload["review_reason"]; !ok {
+			if reason := strings.TrimSpace(audit.Details["review_reason"]); reason != "" {
+				payload["review_reason"] = reason
+			}
 		}
 	}
 	return payload

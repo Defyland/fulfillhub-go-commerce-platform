@@ -184,7 +184,7 @@ func (s *Store) UpdateOrderStatus(ctx context.Context, orderID string, status co
 		return nil, commerce.ErrNotFound
 	}
 
-	event.Payload = orderStatusEventPayload(status, now, audit)
+	event.Payload = commerce.OrderStatusEventPayload(status, now, audit, event.Payload)
 	if err := insertOutboxEvent(ctx, tx, event); err != nil {
 		return nil, err
 	}
@@ -618,7 +618,7 @@ func (s *Store) RecordOrderCancelled(ctx context.Context, source commerce.Outbox
 	if err := voidAuthorizedPayment(ctx, tx, source.OrderID, next.OccurredAt); err != nil {
 		return err
 	}
-	next.Payload = orderStatusEventPayload(commerce.StatusCancelled, next.OccurredAt, audit)
+	next.Payload = commerce.OrderStatusEventPayload(commerce.StatusCancelled, next.OccurredAt, audit, next.Payload)
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
 		return err
 	}
@@ -1369,21 +1369,6 @@ func scanOutboxEvent(rows *sql.Rows) (commerce.OutboxEvent, error) {
 		return envelope.WithEnvelopeDefaults(), nil
 	}
 	return event.WithEnvelopeDefaults(), nil
-}
-
-func orderStatusEventPayload(status commerce.OrderStatus, at time.Time, audit commerce.AuditLog) map[string]any {
-	payload := map[string]any{"order_status": string(status)}
-	switch status {
-	case commerce.StatusCompleted:
-		payload["completed_at"] = at.UTC().Format(time.RFC3339Nano)
-	case commerce.StatusCancelled:
-		payload["cancelled_at"] = at.UTC().Format(time.RFC3339Nano)
-	case commerce.StatusManualReview:
-		if reason := audit.Details["review_reason"]; reason != "" {
-			payload["review_reason"] = reason
-		}
-	}
-	return payload
 }
 
 func failurePayload(stage, reason string) map[string]any {

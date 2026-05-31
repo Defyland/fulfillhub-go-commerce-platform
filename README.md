@@ -410,6 +410,10 @@ Run all Go tests:
 go test ./...
 ```
 
+The spec suite builds every documented core saga event through the runtime
+service and worker handlers, then validates the resulting envelope and payload
+against `docs/events/*.v1.json`.
+
 Run the PostgreSQL integration test when a database is available:
 
 ```sh

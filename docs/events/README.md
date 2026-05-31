@@ -47,6 +47,9 @@ Producer rules:
   publishing directly from business handlers.
 - Producers must not include raw payment tokens, credentials, secrets, or full
   customer PII in event payloads.
+- Runtime contract tests must produce every core saga event through the service
+  and worker handlers, then validate required envelope and payload fields
+  against the matching versioned schema.
 
 Consumer rules:
 

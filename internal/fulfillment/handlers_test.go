@@ -408,8 +408,9 @@ func TestCancellationHandlerFinalizesOrderAndEmitsCancelledEvent(t *testing.T) {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
 	if _, err := service.CancelOrder(order.OrderID, "cor_cancel", commerce.AuditActor{
-		Type: "merchant_user",
-		ID:   "usr_93842",
+		Type:   "merchant_user",
+		ID:     "usr_93842",
+		Reason: "customer_requested",
 	}); err != nil {
 		t.Fatalf("CancelOrder returned error: %v", err)
 	}

@@ -114,7 +114,7 @@ func (s *MemoryStore) UpdateOrderStatus(_ context.Context, orderID string, statu
 	}
 	order.Status = status
 	order.UpdatedAt = now
-	event.Payload = orderStatusEventPayload(status, now, audit)
+	event.Payload = OrderStatusEventPayload(status, now, audit, event.Payload)
 	s.appendOutboxEvent(event)
 	s.auditLogs = append(s.auditLogs, audit)
 
@@ -290,7 +290,7 @@ func (s *MemoryStore) RecordOrderCancelled(_ context.Context, source OutboxEvent
 	if order.Payment != nil && order.Payment.Status == "authorized" {
 		order.Payment.Status = "voided"
 	}
-	next.Payload = orderStatusEventPayload(StatusCancelled, next.OccurredAt, audit)
+	next.Payload = OrderStatusEventPayload(StatusCancelled, next.OccurredAt, audit, next.Payload)
 	s.appendOutboxEvent(next)
 	s.auditLogs = append(s.auditLogs, audit)
 	return nil
@@ -456,21 +456,6 @@ func failurePayload(stage, reason string) map[string]any {
 			"reason": reason,
 		},
 	}
-}
-
-func orderStatusEventPayload(status OrderStatus, at time.Time, audit AuditLog) map[string]any {
-	payload := map[string]any{"order_status": string(status)}
-	switch status {
-	case StatusCompleted:
-		payload["completed_at"] = at.UTC().Format(time.RFC3339Nano)
-	case StatusCancelled:
-		payload["cancelled_at"] = at.UTC().Format(time.RFC3339Nano)
-	case StatusManualReview:
-		if reason := audit.Details["review_reason"]; reason != "" {
-			payload["review_reason"] = reason
-		}
-	}
-	return payload
 }
 
 func scopedKey(merchantID, value string) string {

@@ -146,6 +146,9 @@ func (s *Service) GetShipmentContext(ctx context.Context, shipmentID string) (*S
 }
 
 func (s *Service) CancelOrderContext(ctx context.Context, orderID, correlationID string, actor AuditActor) (*Order, error) {
+	if err := validateCancelActor(actor); err != nil {
+		return nil, err
+	}
 	order, err := s.store.GetOrder(ctx, orderID)
 	if err != nil {
 		return nil, err
@@ -275,6 +278,23 @@ func validateCreateOrder(merchantID, idempotencyKey string, req CreateOrderReque
 	}
 	if strings.TrimSpace(req.PaymentMethod.PaymentToken) == "" {
 		fields = append(fields, FieldError{Field: "payment_method.payment_token", Issue: "is required"})
+	}
+	if len(fields) > 0 {
+		return ValidationError{Fields: fields}
+	}
+	return nil
+}
+
+func validateCancelActor(actor AuditActor) error {
+	var fields []FieldError
+	if strings.TrimSpace(actor.Reason) == "" {
+		fields = append(fields, FieldError{Field: "reason", Issue: "is required"})
+	}
+	if strings.TrimSpace(actor.Type) == "" {
+		fields = append(fields, FieldError{Field: "requested_by.type", Issue: "is required"})
+	}
+	if strings.TrimSpace(actor.ID) == "" {
+		fields = append(fields, FieldError{Field: "requested_by.id", Issue: "is required"})
 	}
 	if len(fields) > 0 {
 		return ValidationError{Fields: fields}
