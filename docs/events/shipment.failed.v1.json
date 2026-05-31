@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Defyland/fulfillhub-go-commerce-platform/docs/events/shipment.failed.v1.json",
+  "title": "shipment.failed v1",
+  "type": "object",
+  "required": [
+    "message_id",
+    "event_type",
+    "schema_version",
+    "occurred_at",
+    "producer",
+    "merchant_id",
+    "order_id",
+    "correlation_id",
+    "causation_id",
+    "payload"
+  ],
+  "properties": {
+    "message_id": { "type": "string", "minLength": 1 },
+    "event_type": { "type": "string", "const": "shipment.failed" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "producer": { "type": "string", "minLength": 1 },
+    "merchant_id": { "type": "string", "minLength": 1 },
+    "order_id": { "type": "string", "minLength": 1 },
+    "correlation_id": { "type": "string", "minLength": 1 },
+    "causation_id": { "type": "string", "minLength": 1 },
+    "payload": {
+      "type": "object",
+      "required": ["failure"],
+      "properties": {
+        "failure": {
+          "type": "object",
+          "required": ["stage", "reason"],
+          "properties": {
+            "stage": { "type": "string", "const": "shipment" },
+            "reason": { "type": "string", "minLength": 1 }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

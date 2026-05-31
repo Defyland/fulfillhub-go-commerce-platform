@@ -205,6 +205,33 @@ func TestConsumerNacksAfterRetryAttemptsExhausted(t *testing.T) {
 	}
 }
 
+func TestConsumerRejectsUnsupportedSchemaVersion(t *testing.T) {
+	ack := &fakeAcknowledger{}
+	delivery := deliveryForTest(t, ack, commerce.OutboxEvent{
+		MessageID:     "msg_schema",
+		CorrelationID: "cor_1",
+		CausationID:   "msg_root",
+		EventType:     "order.created",
+		SchemaVersion: 99,
+		OrderID:       "ord_1",
+		MerchantID:    "mer_1",
+	})
+	consumer := Consumer{
+		Queue:        InventoryReserveQueue,
+		ConsumerName: "inventory-worker",
+		Inbox:        NewMemoryInbox(),
+		Handler:      HandlerFunc(func(context.Context, commerce.OutboxEvent) error { return nil }),
+	}
+
+	err := consumer.ProcessDelivery(context.Background(), delivery)
+	if err == nil {
+		t.Fatal("ProcessDelivery must reject unsupported schema versions")
+	}
+	if ack.acked != 0 || ack.nacked != 1 {
+		t.Fatalf("ack state = acked %d nacked %d, want nack only", ack.acked, ack.nacked)
+	}
+}
+
 func TestConsumerDoesNotRetryWhenInboxReleaseFails(t *testing.T) {
 	ack := &fakeAcknowledger{}
 	retry := &fakeRetryPublisher{}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
@@ -16,8 +17,11 @@ import (
 )
 
 type RabbitPublisher struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
+	conn     *amqp.Connection
+	channel  *amqp.Channel
+	confirms <-chan amqp.Confirmation
+	returns  <-chan amqp.Return
+	mu       sync.Mutex
 }
 
 func NewRabbitPublisher(url string) (*RabbitPublisher, error) {
@@ -35,7 +39,14 @@ func NewRabbitPublisher(url string) (*RabbitPublisher, error) {
 		_ = conn.Close()
 		return nil, err
 	}
-	return &RabbitPublisher{conn: conn, channel: channel}, nil
+	if err := channel.Confirm(false); err != nil {
+		_ = channel.Close()
+		_ = conn.Close()
+		return nil, fmt.Errorf("enable rabbitmq publisher confirms: %w", err)
+	}
+	confirms := channel.NotifyPublish(make(chan amqp.Confirmation, 1))
+	returns := channel.NotifyReturn(make(chan amqp.Return, 1))
+	return &RabbitPublisher{conn: conn, channel: channel, confirms: confirms, returns: returns}, nil
 }
 
 func (p *RabbitPublisher) Close() error {
@@ -48,7 +59,13 @@ func (p *RabbitPublisher) Close() error {
 }
 
 func (p *RabbitPublisher) Publish(ctx context.Context, event commerce.OutboxEvent) error {
-	event = event.WithDefaultCausation()
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	event = event.WithEnvelopeDefaults()
 	ctx, span := messagingTracer().Start(ctx, "rabbitmq.publish", trace.WithAttributes(
 		attribute.String("messaging.system", "rabbitmq"),
 		attribute.String("messaging.destination.name", DomainExchange),
@@ -74,7 +91,7 @@ func (p *RabbitPublisher) Publish(ctx context.Context, event commerce.OutboxEven
 		"order_id":     event.OrderID,
 	}
 	injectTraceHeaders(ctx, headers)
-	if err := p.channel.PublishWithContext(ctx, DomainExchange, RoutingKey(event.EventType), false, false, amqp.Publishing{
+	if err := p.channel.PublishWithContext(ctx, DomainExchange, RoutingKey(event.EventType), true, false, amqp.Publishing{
 		ContentType:   "application/json",
 		DeliveryMode:  amqp.Persistent,
 		MessageId:     event.MessageID,
@@ -88,7 +105,36 @@ func (p *RabbitPublisher) Publish(ctx context.Context, event commerce.OutboxEven
 		span.SetStatus(codes.Error, "publish rabbitmq message")
 		return err
 	}
+	if err := p.waitForPublishOutcome(ctx, event.MessageID); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "confirm rabbitmq message")
+		return err
+	}
 	return nil
+}
+
+func (p *RabbitPublisher) waitForPublishOutcome(ctx context.Context, messageID string) error {
+	for {
+		select {
+		case returned, ok := <-p.returns:
+			if !ok {
+				return fmt.Errorf("rabbitmq return channel closed")
+			}
+			if returned.MessageId == messageID {
+				return fmt.Errorf("rabbitmq message %s was returned as unroutable: %s", messageID, returned.ReplyText)
+			}
+		case confirmation, ok := <-p.confirms:
+			if !ok {
+				return fmt.Errorf("rabbitmq confirm channel closed")
+			}
+			if !confirmation.Ack {
+				return fmt.Errorf("rabbitmq negatively acknowledged message %s", messageID)
+			}
+			return nil
+		case <-ctx.Done():
+			return fmt.Errorf("wait for rabbitmq publish confirmation: %w", ctx.Err())
+		}
+	}
 }
 
 func injectTraceHeaders(ctx context.Context, headers amqp.Table) {

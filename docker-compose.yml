@@ -15,6 +15,8 @@ services:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
       RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-120}"
       METRICS_BEARER_TOKEN: local-metrics-token
+      MERCHANT_API_KEYS: "fh_live_merchant_demo=mer_01hzy6v4egscg4r7kb3m7jq2dk,fh_live_second_demo=mer_01hzy8v4egscg4r7kb3m7jq9qx"
+      ALLOW_LOCAL_OPS_TOKEN: "true"
     ports:
       - "${API_PORT:-8080}:8080"
     depends_on:

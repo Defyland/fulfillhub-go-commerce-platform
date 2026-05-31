@@ -16,7 +16,8 @@
 
 - Merchant storefronts call `/api/v1` with `X-API-Key`.
 - Operations callers use `Authorization: Bearer <jwt>` when `OPS_JWT_SECRET` is configured.
-- `Bearer ops-token` is accepted only for local development when no JWT secret is configured.
+- `Bearer ops-token` is accepted only for local development when
+  `ALLOW_LOCAL_OPS_TOKEN=true` and no JWT secret is configured.
 - PostgreSQL is the durable consistency boundary for orders, outbox, inbox, and audit logs.
 - RabbitMQ is an at-least-once delivery boundary; consumers must be idempotent.
 - Redis is a control-plane dependency for rate limiting when `REDIS_URL` is configured.

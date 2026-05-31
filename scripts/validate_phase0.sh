@@ -107,6 +107,7 @@ internal/postgres/migrations/010_demo_inventory_seed.sql
 internal/postgres/migrations/011_order_status_check.sql
 internal/postgres/migrations/012_order_provider_references.sql
 internal/postgres/migrations/013_projection_status_checks.sql
+internal/postgres/migrations/014_outbox_claims.sql
 internal/providers/payment.go
 internal/providers/providers_test.go
 internal/providers/shipment.go
@@ -132,9 +133,15 @@ docs/events/README.md
 docs/events/threat-model.md
 docs/events/order.created.v1.json
 docs/events/inventory.reserved.v1.json
+docs/events/inventory.rejected.v1.json
 docs/events/payment.authorized.v1.json
+docs/events/payment.failed.v1.json
 docs/events/shipment.created.v1.json
+docs/events/shipment.failed.v1.json
+docs/events/order.cancel_requested.v1.json
 docs/events/order.completed.v1.json
+docs/events/order.cancelled.v1.json
+docs/events/order.manual_review_required.v1.json
 docs/observability/grafana-dashboard.json
 docs/runbooks/incident-response.md
 docs/runbooks/deployment-rollback.md

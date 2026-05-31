@@ -27,7 +27,7 @@ PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The
 - `inventory_items(warehouse_id, sku)` unique lookup path
 - `stock_reservations(order_id, status)` for reservation reconciliation
 - `stock_reservations(warehouse_id, sku)` for inventory release lookup
-- `outbox_events(published_at, occurred_at)` for relay polling
+- `outbox_events(published_at, claimed_until, occurred_at)` for relay leasing
 - `outbox_events(correlation_id, causation_id)` for saga trace reconstruction
 - `inbox_messages(consumer_name, processed_at desc)` for replay diagnostics
 - `shipments(order_id)` for order read models

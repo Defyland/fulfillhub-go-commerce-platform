@@ -220,6 +220,45 @@ func TestProductionReadinessValidationRunsInCI(t *testing.T) {
 	}
 }
 
+func TestRuntimeReliabilityHardeningIsEncodedInCode(t *testing.T) {
+	required := map[string][]string{
+		"internal/messaging/rabbitmq.go": {
+			"channel.Confirm(false)",
+			"NotifyPublish",
+			"NotifyReturn",
+			"PublishWithContext(ctx, DomainExchange, RoutingKey(event.EventType), true, false",
+		},
+		"internal/postgres/store.go": {
+			"FOR UPDATE SKIP LOCKED",
+			"claimed_until",
+			"WithEnvelopeDefaults",
+		},
+		"cmd/fulfillhub-api/main.go": {
+			"MERCHANT_API_KEYS",
+			"ALLOW_LOCAL_OPS_TOKEN",
+			"ReadHeaderTimeout",
+			"ReadTimeout",
+			"WriteTimeout",
+		},
+		"internal/api/server.go": {
+			"http.MaxBytesReader",
+			"AllowLocalOpsToken",
+		},
+		"internal/commerce/service.go": {
+			"cryptorand.Read",
+		},
+	}
+
+	for path, fragments := range required {
+		body := readRepoFile(t, path)
+		for _, fragment := range fragments {
+			if !strings.Contains(body, fragment) {
+				t.Fatalf("%s must contain %q", path, fragment)
+			}
+		}
+	}
+}
+
 func assertValidYAMLDocuments(t testing.TB, path, body string) {
 	t.Helper()
 	decoder := yaml.NewDecoder(strings.NewReader(body))

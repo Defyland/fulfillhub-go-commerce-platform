@@ -56,8 +56,9 @@ defined in [threat-model.md](./threat-model.md).
 - The PostgreSQL store can load pending outbox events and mark them published.
 - Outbox rows persist `causation_id`; API-originated root events use their own
   `message_id`, and worker-emitted saga events use the source message ID.
-- `cmd/fulfillhub-outbox-relay` publishes pending events to RabbitMQ and injects
-  `traceparent` plus `causation_id` into AMQP headers.
+- `cmd/fulfillhub-outbox-relay` claims pending events with a short lease,
+  publishes them to RabbitMQ with publisher confirms and mandatory routing, and
+  injects `traceparent` plus `causation_id` into AMQP headers.
 - `cmd/fulfillhub-dlq-replay` requires PostgreSQL audit logging and records
   `dlq.replay` details for successful or failed replay attempts.
 - Inbox idempotency is implemented for memory tests and PostgreSQL-backed consumers.

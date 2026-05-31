@@ -184,6 +184,7 @@ func (s *Store) UpdateOrderStatus(ctx context.Context, orderID string, status co
 		return nil, commerce.ErrNotFound
 	}
 
+	event.Payload = orderStatusEventPayload(status, now, audit)
 	if err := insertOutboxEvent(ctx, tx, event); err != nil {
 		return nil, err
 	}
@@ -228,11 +229,17 @@ func (s *Store) RecordInventoryReserved(ctx context.Context, source commerce.Out
 	if err != nil {
 		return err
 	}
+	reservations := make([]map[string]any, 0, len(items))
 	for _, item := range items {
 		warehouseID, err := reserveInventoryItem(ctx, tx, source.MerchantID, source.OrderID, item, next.OccurredAt)
 		if err != nil {
 			return err
 		}
+		reservations = append(reservations, map[string]any{
+			"sku":          item.sku,
+			"quantity":     item.quantity,
+			"warehouse_id": warehouseID,
+		})
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO stock_reservations (order_id, warehouse_id, sku, quantity, status, reserved_at)
 			VALUES ($1, $2, $3, $4, 'reserved', $5)
@@ -261,6 +268,10 @@ func (s *Store) RecordInventoryReserved(ctx context.Context, source commerce.Out
 		WHERE order_id = $1
 	`, source.OrderID, commerce.StatusInventoryReserved, next.OccurredAt); err != nil {
 		return fmt.Errorf("touch order after inventory reservation: %w", err)
+	}
+	next.Payload = map[string]any{
+		"order_status": string(commerce.StatusInventoryReserved),
+		"reservations": reservations,
 	}
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
 		return err
@@ -308,6 +319,7 @@ func (s *Store) RecordInventoryRejected(ctx context.Context, source commerce.Out
 	`, source.OrderID, next.OccurredAt); err != nil {
 		return fmt.Errorf("touch order after inventory rejection: %w", err)
 	}
+	next.Payload = failurePayload("inventory", audit.Details["error"])
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
 		return err
 	}
@@ -382,6 +394,15 @@ func (s *Store) RecordPaymentAuthorized(ctx context.Context, source commerce.Out
 	`, source.OrderID, commerce.StatusPaymentAuthorized, provider, payment.Status, payment.AuthorizationID, next.OccurredAt); err != nil {
 		return fmt.Errorf("update order payment authorization: %w", err)
 	}
+	next.Payload = map[string]any{
+		"order_status": string(commerce.StatusPaymentAuthorized),
+		"payment": map[string]any{
+			"provider":         provider,
+			"authorization_id": payment.AuthorizationID,
+			"amount":           totalAmount,
+			"currency":         currency,
+		},
+	}
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
 		return err
 	}
@@ -431,6 +452,7 @@ func (s *Store) RecordPaymentFailed(ctx context.Context, source commerce.OutboxE
 	`, source.OrderID, provider, next.OccurredAt); err != nil {
 		return fmt.Errorf("update order payment failure: %w", err)
 	}
+	next.Payload = failurePayload("payment", audit.Details["error"])
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
 		return err
 	}
@@ -491,6 +513,14 @@ func (s *Store) RecordShipmentCreated(ctx context.Context, source commerce.Outbo
 	`, source.OrderID, commerce.StatusShipmentCreated, next.OccurredAt); err != nil {
 		return fmt.Errorf("touch order after shipment: %w", err)
 	}
+	next.Payload = map[string]any{
+		"order_status": string(commerce.StatusShipmentCreated),
+		"shipment": map[string]any{
+			"shipment_id":     shipment.ShipmentID,
+			"carrier":         shipment.Carrier,
+			"tracking_number": shipment.TrackingNumber,
+		},
+	}
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
 		return err
 	}
@@ -529,6 +559,7 @@ func (s *Store) RecordShipmentFailed(ctx context.Context, source commerce.Outbox
 	`, source.OrderID, next.OccurredAt); err != nil {
 		return fmt.Errorf("touch order after shipment failure: %w", err)
 	}
+	next.Payload = failurePayload("shipment", audit.Details["error"])
 	if err := insertOutboxEvent(ctx, tx, next); err != nil {
 		return err
 	}
@@ -696,7 +727,7 @@ func applyCompensationEffects(ctx context.Context, tx *sql.Tx, source commerce.O
 
 func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 	rows, err := s.db.QueryContext(context.Background(), `
-		SELECT message_id, correlation_id, causation_id, event_type, order_id, merchant_id, occurred_at
+		SELECT message_id, correlation_id, causation_id, event_type, order_id, merchant_id, payload, occurred_at
 		FROM outbox_events
 		ORDER BY occurred_at ASC
 	`)
@@ -707,11 +738,11 @@ func (s *Store) OutboxEvents() []commerce.OutboxEvent {
 
 	var events []commerce.OutboxEvent
 	for rows.Next() {
-		var event commerce.OutboxEvent
-		if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.CausationID, &event.EventType, &event.OrderID, &event.MerchantID, &event.OccurredAt); err != nil {
+		event, err := scanOutboxEvent(rows)
+		if err != nil {
 			return nil
 		}
-		events = append(events, event)
+		events = append(events, event.WithEnvelopeDefaults())
 	}
 	return events
 }
@@ -785,23 +816,34 @@ func (s *Store) PendingOutboxEvents(ctx context.Context, limit int) (events []co
 		limit = 100
 	}
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT message_id, correlation_id, causation_id, event_type, order_id, merchant_id, occurred_at
-		FROM outbox_events
-		WHERE published_at IS NULL
-		ORDER BY occurred_at ASC
-		LIMIT $1
+		WITH picked AS (
+			SELECT message_id
+			FROM outbox_events
+			WHERE published_at IS NULL
+				AND (claimed_until IS NULL OR claimed_until <= now())
+			ORDER BY occurred_at ASC
+			FOR UPDATE SKIP LOCKED
+			LIMIT $1
+		)
+		UPDATE outbox_events event
+		SET claimed_by = 'fulfillhub-outbox-relay',
+			claimed_until = now() + interval '30 seconds'
+		FROM picked
+		WHERE event.message_id = picked.message_id
+		RETURNING event.message_id, event.correlation_id, event.causation_id, event.event_type,
+			event.order_id, event.merchant_id, event.payload, event.occurred_at
 	`, limit)
 	if err != nil {
-		return nil, fmt.Errorf("query pending outbox events: %w", err)
+		return nil, fmt.Errorf("claim pending outbox events: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var event commerce.OutboxEvent
-		if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.CausationID, &event.EventType, &event.OrderID, &event.MerchantID, &event.OccurredAt); err != nil {
+		event, err := scanOutboxEvent(rows)
+		if err != nil {
 			return nil, fmt.Errorf("scan pending outbox event: %w", err)
 		}
-		events = append(events, event)
+		events = append(events, event.WithEnvelopeDefaults())
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate pending outbox events: %w", err)
@@ -891,7 +933,9 @@ func (s *Store) MarkOutboxPublished(ctx context.Context, messageID string, publi
 
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE outbox_events
-		SET published_at = $2
+		SET published_at = $2,
+			claimed_by = NULL,
+			claimed_until = NULL
 		WHERE message_id = $1 AND published_at IS NULL
 	`, messageID, publishedAt)
 	if err != nil {
@@ -1202,7 +1246,7 @@ func orderByIdempotency(ctx context.Context, tx *sql.Tx, merchantID, idempotency
 }
 
 func insertOutboxEvent(ctx context.Context, tx *sql.Tx, event commerce.OutboxEvent) error {
-	event = event.WithDefaultCausation()
+	event = event.WithEnvelopeDefaults()
 	payload, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("marshal outbox event: %w", err)
@@ -1215,6 +1259,70 @@ func insertOutboxEvent(ctx context.Context, tx *sql.Tx, event commerce.OutboxEve
 		return fmt.Errorf("insert outbox event: %w", err)
 	}
 	return nil
+}
+
+func scanOutboxEvent(rows *sql.Rows) (commerce.OutboxEvent, error) {
+	var event commerce.OutboxEvent
+	var payload []byte
+	if err := rows.Scan(&event.MessageID, &event.CorrelationID, &event.CausationID, &event.EventType, &event.OrderID, &event.MerchantID, &payload, &event.OccurredAt); err != nil {
+		return commerce.OutboxEvent{}, err
+	}
+	if len(payload) > 0 {
+		var envelope commerce.OutboxEvent
+		if err := json.Unmarshal(payload, &envelope); err != nil {
+			return commerce.OutboxEvent{}, err
+		}
+		if envelope.MessageID == "" {
+			envelope.MessageID = event.MessageID
+		}
+		if envelope.CorrelationID == "" {
+			envelope.CorrelationID = event.CorrelationID
+		}
+		if envelope.CausationID == "" {
+			envelope.CausationID = event.CausationID
+		}
+		if envelope.EventType == "" {
+			envelope.EventType = event.EventType
+		}
+		if envelope.OrderID == "" {
+			envelope.OrderID = event.OrderID
+		}
+		if envelope.MerchantID == "" {
+			envelope.MerchantID = event.MerchantID
+		}
+		if envelope.OccurredAt.IsZero() {
+			envelope.OccurredAt = event.OccurredAt
+		}
+		return envelope.WithEnvelopeDefaults(), nil
+	}
+	return event.WithEnvelopeDefaults(), nil
+}
+
+func orderStatusEventPayload(status commerce.OrderStatus, at time.Time, audit commerce.AuditLog) map[string]any {
+	payload := map[string]any{"order_status": string(status)}
+	switch status {
+	case commerce.StatusCompleted:
+		payload["completed_at"] = at.UTC().Format(time.RFC3339Nano)
+	case commerce.StatusCancelled:
+		payload["cancelled_at"] = at.UTC().Format(time.RFC3339Nano)
+	case commerce.StatusManualReview:
+		if reason := audit.Details["review_reason"]; reason != "" {
+			payload["review_reason"] = reason
+		}
+	}
+	return payload
+}
+
+func failurePayload(stage, reason string) map[string]any {
+	if reason == "" {
+		reason = "unspecified"
+	}
+	return map[string]any{
+		"failure": map[string]any{
+			"stage":  stage,
+			"reason": reason,
+		},
+	}
 }
 
 func upsertMerchant(ctx context.Context, tx *sql.Tx, merchantID string) error {

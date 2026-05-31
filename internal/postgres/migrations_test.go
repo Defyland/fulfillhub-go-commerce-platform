@@ -252,6 +252,23 @@ func TestMigrationsConstrainProjectionStatuses(t *testing.T) {
 	}
 }
 
+func TestMigrationsAddOutboxClaims(t *testing.T) {
+	body, err := migrationsFS.ReadFile("migrations/014_outbox_claims.sql")
+	if err != nil {
+		t.Fatalf("read outbox claims migration: %v", err)
+	}
+	sql := string(body)
+	for _, fragment := range []string{
+		"claimed_by TEXT",
+		"claimed_until TIMESTAMPTZ",
+		"idx_outbox_events_claimable",
+	} {
+		if !strings.Contains(sql, fragment) {
+			t.Fatalf("outbox claims migration does not include %q", fragment)
+		}
+	}
+}
+
 func TestPostgresStoreIntegration(t *testing.T) {
 	databaseURL := os.Getenv("DATABASE_URL")
 	if databaseURL == "" {

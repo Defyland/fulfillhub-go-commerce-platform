@@ -174,7 +174,13 @@ func decodeDelivery(delivery amqp.Delivery) (commerce.OutboxEvent, error) {
 	if event.EventType == "" {
 		event.EventType = delivery.Type
 	}
-	return event, nil
+	if event.SchemaVersion == 0 {
+		event.SchemaVersion = commerce.EventSchemaVersion
+	}
+	if event.SchemaVersion != commerce.EventSchemaVersion {
+		return commerce.OutboxEvent{}, fmt.Errorf("unsupported event schema version %d", event.SchemaVersion)
+	}
+	return event.WithEnvelopeDefaults(), nil
 }
 
 func headerString(headers amqp.Table, key string) string {

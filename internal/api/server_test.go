@@ -38,7 +38,7 @@ func TestHealthAndReadiness(t *testing.T) {
 }
 
 func TestReadinessReportsConfiguredDependencies(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		ReadinessChecks: map[string]ReadinessChecker{
 			"broker": ReadinessCheckFunc(func(context.Context) error { return nil }),
 			"cache":  ReadinessCheckFunc(func(context.Context) error { return nil }),
@@ -68,7 +68,7 @@ func TestReadinessReportsConfiguredDependencies(t *testing.T) {
 }
 
 func TestReadinessFailsWhenDependencyIsUnavailable(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		ReadinessChecks: map[string]ReadinessChecker{
 			"broker": ReadinessCheckFunc(func(context.Context) error {
 				return errors.New("connection timeout")
@@ -92,7 +92,7 @@ func TestReadinessFailsWhenDependencyIsUnavailable(t *testing.T) {
 func TestServerWritesStructuredRequestLog(t *testing.T) {
 	var logBuffer bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logBuffer, nil))
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		Logger: logger,
 	})
 	rec := httptest.NewRecorder()
@@ -138,7 +138,7 @@ func TestServerPropagatesTraceContext(t *testing.T) {
 			t.Fatalf("shutdown tracer provider: %v", err)
 		}
 	})
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		TracerProvider: provider,
 		Propagator:     propagation.TraceContext{},
 	})
@@ -170,7 +170,7 @@ func TestServerPropagatesTraceContext(t *testing.T) {
 }
 
 func TestMetricsIncludesRabbitMQQueueGauges(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		QueueMetrics: fakeQueueMetrics{
 			depths: []messaging.QueueDepth{
 				{Queue: messaging.InventoryReserveQueue, MessagesReady: 7, Consumers: 1},
@@ -196,7 +196,7 @@ func TestMetricsIncludesRabbitMQQueueGauges(t *testing.T) {
 }
 
 func TestMetricsIncludesOutboxBacklogGauge(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		OutboxBacklog: fakeOutboxBacklog{count: 3, oldestAgeSeconds: 12.5},
 	})
 	rec := httptest.NewRecorder()
@@ -218,7 +218,7 @@ func TestMetricsIncludesOutboxBacklogGauge(t *testing.T) {
 }
 
 func TestMetricsIncludesOrderStatusGauges(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		SagaMetrics: fakeSagaMetrics{counts: map[commerce.OrderStatus]int{
 			commerce.StatusPendingFulfillment: 2,
 			commerce.StatusCompleted:          5,
@@ -244,7 +244,7 @@ func TestMetricsIncludesOrderStatusGauges(t *testing.T) {
 }
 
 func TestMetricsReportsOutboxMetricsDown(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		OutboxBacklog: fakeOutboxBacklog{err: errors.New("database unavailable")},
 	})
 	rec := httptest.NewRecorder()
@@ -263,7 +263,7 @@ func TestMetricsReportsOutboxMetricsDown(t *testing.T) {
 }
 
 func TestMetricsReportsRabbitMQQueueMetricsDown(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		QueueMetrics: fakeQueueMetrics{err: errors.New("rabbitmq unavailable")},
 	})
 	rec := httptest.NewRecorder()
@@ -278,7 +278,7 @@ func TestMetricsReportsRabbitMQQueueMetricsDown(t *testing.T) {
 }
 
 func TestMetricsRequiresBearerTokenWhenConfigured(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		MetricsBearerToken: "metrics-secret",
 	})
 
@@ -315,6 +315,18 @@ func TestCreateOrderRequiresAPIKey(t *testing.T) {
 	server := testServer()
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", strings.NewReader(`{}`))
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusUnauthorized)
+}
+
+func TestConfiguredAPIKeysAreRequiredForMerchantAccess(t *testing.T) {
+	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(validOrderJSON(t)))
+	req.Header.Set("X-API-Key", "fh_live_merchant_demo")
+	req.Header.Set("Idempotency-Key", "idem-key-0001")
 
 	server.ServeHTTP(rec, req)
 
@@ -399,7 +411,7 @@ func TestCreateOrderRejectsValidationFailure(t *testing.T) {
 }
 
 func TestCreateOrderAppliesRateLimit(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		RateLimiter: &fixedLimiter{allowed: false},
 	})
 	rec := httptest.NewRecorder()
@@ -410,6 +422,23 @@ func TestCreateOrderAppliesRateLimit(t *testing.T) {
 	server.ServeHTTP(rec, req)
 
 	assertStatus(t, rec, http.StatusTooManyRequests)
+}
+
+func TestCreateOrderRejectsOversizedBody(t *testing.T) {
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+		MaxRequestBodyBytes: 64,
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(validOrderJSON(t)))
+	req.Header.Set("X-API-Key", "fh_live_merchant_demo")
+	req.Header.Set("Idempotency-Key", "idem-key-0001")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusRequestEntityTooLarge)
+	if !strings.Contains(rec.Body.String(), "payload_too_large") {
+		t.Fatalf("oversized body response = %s, want payload_too_large", rec.Body.String())
+	}
 }
 
 func TestMerchantCannotReadAnotherMerchantOrder(t *testing.T) {
@@ -436,6 +465,19 @@ func TestOpsTokenCanReadMerchantOrder(t *testing.T) {
 	server.ServeHTTP(rec, req)
 
 	assertStatus(t, rec, http.StatusOK)
+}
+
+func TestStaticOpsTokenRequiresExplicitLocalOption(t *testing.T) {
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{})
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/orders/"+orderID, nil)
+	req.Header.Set("Authorization", "Bearer ops-token")
+
+	server.ServeHTTP(rec, req)
+
+	assertStatus(t, rec, http.StatusUnauthorized)
 }
 
 func TestGetShipmentReturnsMerchantShipment(t *testing.T) {
@@ -510,7 +552,7 @@ func TestGetShipmentRequiresAuthentication(t *testing.T) {
 
 func TestOpsJWTCanReadMerchantOrder(t *testing.T) {
 	const secret = "ops-jwt-secret"
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		OpsJWTSecret: secret,
 	})
 	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
@@ -531,7 +573,7 @@ func TestOpsJWTCanReadMerchantOrder(t *testing.T) {
 
 func TestOpsJWTValidatesIssuerAndAudience(t *testing.T) {
 	const secret = "ops-jwt-secret"
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		OpsJWTSecret:   secret,
 		OpsJWTIssuer:   "https://ops.fulfillhub.local",
 		OpsJWTAudience: "fulfillhub-ops",
@@ -556,7 +598,7 @@ func TestOpsJWTValidatesIssuerAndAudience(t *testing.T) {
 
 func TestOpsJWTRejectsWrongIssuerOrAudience(t *testing.T) {
 	const secret = "ops-jwt-secret"
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		OpsJWTSecret:   secret,
 		OpsJWTIssuer:   "https://ops.fulfillhub.local",
 		OpsJWTAudience: "fulfillhub-ops",
@@ -581,7 +623,7 @@ func TestOpsJWTRejectsWrongIssuerOrAudience(t *testing.T) {
 
 func TestOpsJWTAcceptsPreviousSecretDuringRotation(t *testing.T) {
 	const oldSecret = "old-ops-jwt-secret"
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		OpsJWTSecret:          "new-ops-jwt-secret",
 		OpsJWTPreviousSecrets: []string{oldSecret},
 	})
@@ -603,7 +645,7 @@ func TestOpsJWTAcceptsPreviousSecretDuringRotation(t *testing.T) {
 
 func TestOpsJWTRejectsMissingOperationsRole(t *testing.T) {
 	const secret = "ops-jwt-secret"
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		OpsJWTSecret: secret,
 	})
 	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
@@ -623,7 +665,7 @@ func TestOpsJWTRejectsMissingOperationsRole(t *testing.T) {
 }
 
 func TestStaticOpsTokenDisabledWhenJWTSecretConfigured(t *testing.T) {
-	server := NewServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
+	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		OpsJWTSecret: "ops-jwt-secret",
 	})
 	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
@@ -733,6 +775,13 @@ func BenchmarkCreateOrder(b *testing.B) {
 func testServer() http.Handler {
 	server, _, _ := testServerWithStore()
 	return server
+}
+
+func newTestServerWithOptions(service *commerce.Service, options Options) http.Handler {
+	if len(options.APIKeys) == 0 {
+		options.APIKeys = LocalDemoAPIKeys()
+	}
+	return NewServerWithOptions(service, options)
 }
 
 func testServerWithStore() (http.Handler, *commerce.MemoryStore, *commerce.Service) {

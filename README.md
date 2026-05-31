@@ -210,8 +210,8 @@ runtime baseline.
 ## Security considerations
 
 - Merchant-facing APIs authenticate through scoped API keys and derive `merchant_id` from the key
-- Operations-only capabilities use JWT bearer tokens with role, expiry, issuer, audience, and rotation controls when configured
-- The local slice accepts `Bearer ops-token` only when `OPS_JWT_SECRET` is not set
+- Operations-only capabilities use JWT bearer tokens with role, expiry, issuer, audience, and rotation controls
+- The local static `Bearer ops-token` fallback is accepted only when `ALLOW_LOCAL_OPS_TOKEN=true` and no `OPS_JWT_SECRET` is configured
 - Tenant isolation is enforced on every read and write path via `merchant_id`
 - Input validation rejects malformed SKU, quantity, address, and idempotency payloads
 - Rate limiting protects order creation and lookup endpoints
@@ -250,10 +250,13 @@ Run the service locally with Go:
 ```sh
 git clone git@github.com:Defyland/fulfillhub-go-commerce-platform.git
 cd fulfillhub-go-commerce-platform
-go run ./cmd/fulfillhub-api
+MERCHANT_API_KEYS='fh_live_merchant_demo=mer_01hzy6v4egscg4r7kb3m7jq2dk,fh_live_second_demo=mer_01hzy8v4egscg4r7kb3m7jq9qx' \
+  go run ./cmd/fulfillhub-api
 ```
 
 The API listens on `:8080` by default. Use `HTTP_ADDR=:9090` to choose another address.
+For quick local demos only, `ALLOW_LOCAL_DEMO_CREDENTIALS=true` loads the same
+demo API keys without putting them in `MERCHANT_API_KEYS`.
 
 Enable local OpenTelemetry span output with:
 
@@ -279,6 +282,10 @@ OPS_JWT_ISSUER='https://ops.fulfillhub.local' \
 OPS_JWT_AUDIENCE='fulfillhub-ops' \
   go run ./cmd/fulfillhub-api
 ```
+
+The static `Bearer ops-token` fallback is disabled by default. Enable it only
+for local demos with `ALLOW_LOCAL_OPS_TOKEN=true`; production-like runs should
+use `OPS_JWT_SECRET`.
 
 To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API applies embedded migrations and switches from the in-memory store to the PostgreSQL store.
 

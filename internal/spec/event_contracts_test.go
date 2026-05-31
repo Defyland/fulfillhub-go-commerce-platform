@@ -5,15 +5,23 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/commerce"
 )
 
 func TestSagaEventContractsAreVersionedAndRuntimeAligned(t *testing.T) {
 	contracts := map[string]string{
-		"order.created":      "docs/events/order.created.v1.json",
-		"inventory.reserved": "docs/events/inventory.reserved.v1.json",
-		"payment.authorized": "docs/events/payment.authorized.v1.json",
-		"shipment.created":   "docs/events/shipment.created.v1.json",
-		"order.completed":    "docs/events/order.completed.v1.json",
+		"order.created":                "docs/events/order.created.v1.json",
+		"inventory.reserved":           "docs/events/inventory.reserved.v1.json",
+		"inventory.rejected":           "docs/events/inventory.rejected.v1.json",
+		"payment.authorized":           "docs/events/payment.authorized.v1.json",
+		"payment.failed":               "docs/events/payment.failed.v1.json",
+		"shipment.created":             "docs/events/shipment.created.v1.json",
+		"shipment.failed":              "docs/events/shipment.failed.v1.json",
+		"order.cancel_requested":       "docs/events/order.cancel_requested.v1.json",
+		"order.completed":              "docs/events/order.completed.v1.json",
+		"order.cancelled":              "docs/events/order.cancelled.v1.json",
+		"order.manual_review_required": "docs/events/order.manual_review_required.v1.json",
 	}
 	requiredEnvelopeFields := []string{
 		"message_id",
@@ -49,6 +57,65 @@ func TestSagaEventContractsAreVersionedAndRuntimeAligned(t *testing.T) {
 		payload := asMap(t, properties["payload"], path+".properties.payload")
 		if len(schemaRequired(t, payload)) == 0 {
 			t.Fatalf("%s payload must define required business fields", path)
+		}
+	}
+}
+
+func TestRuntimeCreatedOrderEventMatchesVersionedEnvelope(t *testing.T) {
+	service := commerce.NewService(commerce.NewMemoryStore())
+	_, _, err := service.CreateOrder("mer_contract", "idem-key-0001", "cor_contract", commerce.CreateOrderRequest{
+		ExternalOrderID: "web-contract-1",
+		Currency:        "USD",
+		Customer: commerce.Customer{
+			Email: "samira@example.com",
+		},
+		ShippingAddress: commerce.Address{
+			Line1:      "55 Market Street",
+			City:       "San Francisco",
+			State:      "CA",
+			PostalCode: "94105",
+			Country:    "US",
+		},
+		Items: []commerce.OrderItemRequest{{
+			SKU:      "SKU-CHAIR-BLK",
+			Quantity: 1,
+			UnitPrice: commerce.Money{
+				Amount:   18900,
+				Currency: "USD",
+			},
+		}},
+		PaymentMethod: commerce.PaymentMethod{
+			Provider:     "stripe",
+			PaymentToken: "tok_visa_01hzsample",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create order: %v", err)
+	}
+
+	raw, err := json.Marshal(service.OutboxEvents()[0])
+	if err != nil {
+		t.Fatalf("marshal runtime event: %v", err)
+	}
+	var event map[string]any
+	if err := json.Unmarshal(raw, &event); err != nil {
+		t.Fatalf("decode runtime event: %v", err)
+	}
+	for _, field := range []string{"message_id", "event_type", "schema_version", "occurred_at", "producer", "merchant_id", "order_id", "correlation_id", "causation_id", "payload"} {
+		if _, ok := event[field]; !ok {
+			t.Fatalf("runtime event missing %s: %s", field, raw)
+		}
+	}
+	if event["event_type"] != "order.created" || event["schema_version"] != float64(commerce.EventSchemaVersion) || event["producer"] != "orders-api" {
+		t.Fatalf("runtime envelope = %+v, want order.created v1 from orders-api", event)
+	}
+	payload, ok := event["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %T, want object", event["payload"])
+	}
+	for _, field := range []string{"external_order_id", "order_status", "currency", "total_amount", "item_count"} {
+		if _, ok := payload[field]; !ok {
+			t.Fatalf("runtime payload missing %s: %+v", field, payload)
 		}
 	}
 }

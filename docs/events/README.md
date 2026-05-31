@@ -123,9 +123,15 @@ constraints are the final guardrails.
 | --- | --- | --- | --- |
 | `order.created` | Orders API | Inventory reservation | [order.created.v1.json](./order.created.v1.json) |
 | `inventory.reserved` | Inventory worker | Payment authorization | [inventory.reserved.v1.json](./inventory.reserved.v1.json) |
+| `inventory.rejected` | Inventory worker | Compensation/notification | [inventory.rejected.v1.json](./inventory.rejected.v1.json) |
 | `payment.authorized` | Payment worker | Shipment creation | [payment.authorized.v1.json](./payment.authorized.v1.json) |
+| `payment.failed` | Payment worker | Compensation/notification | [payment.failed.v1.json](./payment.failed.v1.json) |
 | `shipment.created` | Shipment worker | Order finalizer | [shipment.created.v1.json](./shipment.created.v1.json) |
+| `shipment.failed` | Shipment worker | Compensation/notification | [shipment.failed.v1.json](./shipment.failed.v1.json) |
+| `order.cancel_requested` | Orders API | Cancellation worker | [order.cancel_requested.v1.json](./order.cancel_requested.v1.json) |
 | `order.completed` | Order finalizer | Notification/analytics | [order.completed.v1.json](./order.completed.v1.json) |
+| `order.cancelled` | Cancellation worker | Notification/analytics | [order.cancelled.v1.json](./order.cancelled.v1.json) |
+| `order.manual_review_required` | Cancellation worker | Notification/operations | [order.manual_review_required.v1.json](./order.manual_review_required.v1.json) |
 
 ## Example Envelope
 

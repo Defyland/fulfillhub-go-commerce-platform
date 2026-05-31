@@ -2,6 +2,7 @@ package commerce
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -43,6 +44,66 @@ func TestCreateOrderDerivesMerchantAndWritesOutbox(t *testing.T) {
 	}
 	if logs[0].ActorID != "mer_demo" || logs[0].ActorType != "merchant" {
 		t.Fatalf("audit actor = %s/%s, want merchant/mer_demo", logs[0].ActorType, logs[0].ActorID)
+	}
+}
+
+func TestServiceIDsDoNotRepeatAcrossServiceInstances(t *testing.T) {
+	firstService := NewService(NewMemoryStore())
+	secondService := NewService(NewMemoryStore())
+
+	first, _, err := firstService.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("first CreateOrder returned error: %v", err)
+	}
+	second, _, err := secondService.CreateOrder("mer_demo", "idem-key-0001", "cor_2", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("second CreateOrder returned error: %v", err)
+	}
+
+	if first.OrderID == second.OrderID {
+		t.Fatalf("order ids repeated across service instances: %q", first.OrderID)
+	}
+	firstEvent := firstService.OutboxEvents()[0]
+	secondEvent := secondService.OutboxEvents()[0]
+	if firstEvent.MessageID == secondEvent.MessageID {
+		t.Fatalf("message ids repeated across service instances: %q", firstEvent.MessageID)
+	}
+}
+
+func TestCreateOrderOutboxUsesVersionedEnvelope(t *testing.T) {
+	service := NewService(NewMemoryStore())
+	if _, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest()); err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+
+	event := service.OutboxEvents()[0]
+	raw, err := json.Marshal(event)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		t.Fatalf("decode event envelope: %v", err)
+	}
+	for _, field := range []string{"message_id", "event_type", "schema_version", "producer", "payload", "correlation_id", "causation_id"} {
+		if _, ok := envelope[field]; !ok {
+			t.Fatalf("event envelope missing %s: %s", field, raw)
+		}
+	}
+	if envelope["schema_version"] != float64(EventSchemaVersion) {
+		t.Fatalf("schema_version = %v, want %d", envelope["schema_version"], EventSchemaVersion)
+	}
+	if envelope["producer"] != "orders-api" {
+		t.Fatalf("producer = %v, want orders-api", envelope["producer"])
+	}
+	payload, ok := envelope["payload"].(map[string]any)
+	if !ok {
+		t.Fatalf("payload = %T, want object", envelope["payload"])
+	}
+	for _, field := range []string{"external_order_id", "order_status", "currency", "total_amount", "item_count"} {
+		if _, ok := payload[field]; !ok {
+			t.Fatalf("payload missing %s: %+v", field, payload)
+		}
 	}
 }
 

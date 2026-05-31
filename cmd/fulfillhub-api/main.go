@@ -36,6 +36,24 @@ func main() {
 	if addr == "" {
 		addr = ":8080"
 	}
+	allowLocalDemoCredentials, err := boolEnv(os.Getenv, "ALLOW_LOCAL_DEMO_CREDENTIALS")
+	if err != nil {
+		fatal(logger, "load local demo credential setting", err)
+	}
+	allowLocalOpsToken, err := boolEnv(os.Getenv, "ALLOW_LOCAL_OPS_TOKEN")
+	if err != nil {
+		fatal(logger, "load local ops token setting", err)
+	}
+	apiKeys, err := merchantAPIKeys(os.Getenv)
+	if err != nil {
+		fatal(logger, "load merchant api keys", err)
+	}
+	if len(apiKeys) == 0 {
+		if !allowLocalDemoCredentials {
+			fatal(logger, "MERCHANT_API_KEYS is required unless ALLOW_LOCAL_DEMO_CREDENTIALS=true", nil)
+		}
+		apiKeys = api.LocalDemoAPIKeys()
+	}
 
 	readinessChecks := map[string]api.ReadinessChecker{
 		"store": api.ReadinessCheckFunc(func(context.Context) error { return nil }),
@@ -64,6 +82,8 @@ func main() {
 		OpsJWTAudience:        os.Getenv("OPS_JWT_AUDIENCE"),
 		MetricsBearerToken:    os.Getenv("METRICS_BEARER_TOKEN"),
 		ReadinessChecks:       readinessChecks,
+		APIKeys:               apiKeys,
+		AllowLocalOpsToken:    allowLocalOpsToken,
 	}
 	if outboxBacklog, ok := store.(api.OutboxBacklogProvider); ok {
 		options.OutboxBacklog = outboxBacklog
@@ -113,11 +133,23 @@ func main() {
 	}
 
 	service := commerce.NewService(store)
-	server := api.NewServerWithOptions(service, options)
+	handler := api.NewServerWithOptions(service, options)
+	server := newHTTPServer(addr, handler)
 
 	logger.Info("starting fulfillhub api", "addr", addr)
-	if err := http.ListenAndServe(addr, server); err != nil {
+	if err := server.ListenAndServe(); err != nil {
 		fatal(logger, "api server stopped", err)
+	}
+}
+
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
 	}
 }
 
@@ -158,6 +190,43 @@ func rateLimitPerMinute(getenv func(string) string) (int64, error) {
 		return 0, fmt.Errorf("RATE_LIMIT_PER_MINUTE must be a positive integer")
 	}
 	return limit, nil
+}
+
+func merchantAPIKeys(getenv func(string) string) (map[string]string, error) {
+	value := strings.TrimSpace(getenv("MERCHANT_API_KEYS"))
+	if value == "" {
+		return nil, nil
+	}
+	keys := make(map[string]string)
+	for _, part := range strings.Split(value, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		apiKey, merchantID, ok := strings.Cut(part, "=")
+		apiKey = strings.TrimSpace(apiKey)
+		merchantID = strings.TrimSpace(merchantID)
+		if !ok || apiKey == "" || merchantID == "" {
+			return nil, fmt.Errorf("MERCHANT_API_KEYS must use api_key=merchant_id pairs separated by commas")
+		}
+		keys[apiKey] = merchantID
+	}
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("MERCHANT_API_KEYS must contain at least one api_key=merchant_id pair")
+	}
+	return keys, nil
+}
+
+func boolEnv(getenv func(string) string, key string) (bool, error) {
+	value := strings.TrimSpace(getenv(key))
+	if value == "" {
+		return false, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean", key)
+	}
+	return parsed, nil
 }
 
 func splitCSV(value string) []string {

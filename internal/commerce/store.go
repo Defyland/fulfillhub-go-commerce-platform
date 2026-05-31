@@ -41,6 +41,7 @@ type MemoryStore struct {
 	outbox              []OutboxEvent
 	auditLogs           []AuditLog
 	publishedOutbox     map[string]time.Time
+	claimedOutbox       map[string]time.Time
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -49,6 +50,7 @@ func NewMemoryStore() *MemoryStore {
 		ordersByExternal:    make(map[string]string),
 		ordersByIdempotency: make(map[string]string),
 		publishedOutbox:     make(map[string]time.Time),
+		claimedOutbox:       make(map[string]time.Time),
 	}
 }
 
@@ -69,7 +71,7 @@ func (s *MemoryStore) InsertOrder(_ context.Context, merchantID, idempotencyKey 
 	s.orders[order.OrderID] = cloneOrder(order)
 	s.ordersByExternal[externalRef] = order.OrderID
 	s.ordersByIdempotency[idempotencyRef] = order.OrderID
-	s.outbox = append(s.outbox, event)
+	s.appendOutboxEvent(event)
 	s.auditLogs = append(s.auditLogs, audit)
 
 	return cloneOrder(order), false, nil
@@ -112,7 +114,8 @@ func (s *MemoryStore) UpdateOrderStatus(_ context.Context, orderID string, statu
 	}
 	order.Status = status
 	order.UpdatedAt = now
-	s.outbox = append(s.outbox, event)
+	event.Payload = orderStatusEventPayload(status, now, audit)
+	s.appendOutboxEvent(event)
 	s.auditLogs = append(s.auditLogs, audit)
 
 	return cloneOrder(order), nil
@@ -129,12 +132,22 @@ func (s *MemoryStore) RecordInventoryReserved(_ context.Context, source OutboxEv
 	if err := ValidateOrderTransition(order.Status, StatusInventoryReserved); err != nil {
 		return err
 	}
+	reservations := make([]map[string]any, 0, len(order.Items))
 	for idx := range order.Items {
 		order.Items[idx].ReservationStatus = "reserved"
+		reservations = append(reservations, map[string]any{
+			"sku":          order.Items[idx].SKU,
+			"quantity":     order.Items[idx].Quantity,
+			"warehouse_id": "memory",
+		})
 	}
 	order.Status = StatusInventoryReserved
 	order.UpdatedAt = next.OccurredAt
-	s.outbox = append(s.outbox, next)
+	next.Payload = map[string]any{
+		"order_status": string(StatusInventoryReserved),
+		"reservations": reservations,
+	}
+	s.appendOutboxEvent(next)
 	s.auditLogs = append(s.auditLogs, audit)
 	return nil
 }
@@ -151,7 +164,8 @@ func (s *MemoryStore) RecordInventoryRejected(_ context.Context, source OutboxEv
 		order.Items[idx].ReservationStatus = "rejected"
 	}
 	order.UpdatedAt = next.OccurredAt
-	s.outbox = append(s.outbox, next)
+	next.Payload = failurePayload("inventory", audit.Details["error"])
+	s.appendOutboxEvent(next)
 	s.auditLogs = append(s.auditLogs, audit)
 	return nil
 }
@@ -173,7 +187,16 @@ func (s *MemoryStore) RecordPaymentAuthorized(_ context.Context, source OutboxEv
 	order.Payment = &payment
 	order.Status = StatusPaymentAuthorized
 	order.UpdatedAt = next.OccurredAt
-	s.outbox = append(s.outbox, next)
+	next.Payload = map[string]any{
+		"order_status": string(StatusPaymentAuthorized),
+		"payment": map[string]any{
+			"provider":         payment.Provider,
+			"authorization_id": payment.AuthorizationID,
+			"amount":           order.Totals.Total.Amount,
+			"currency":         order.Currency,
+		},
+	}
+	s.appendOutboxEvent(next)
 	s.auditLogs = append(s.auditLogs, audit)
 	return nil
 }
@@ -195,7 +218,8 @@ func (s *MemoryStore) RecordPaymentFailed(_ context.Context, source OutboxEvent,
 		Status:   "failed",
 	}
 	order.UpdatedAt = next.OccurredAt
-	s.outbox = append(s.outbox, next)
+	next.Payload = failurePayload("payment", audit.Details["error"])
+	s.appendOutboxEvent(next)
 	s.auditLogs = append(s.auditLogs, audit)
 	return nil
 }
@@ -214,7 +238,15 @@ func (s *MemoryStore) RecordShipmentCreated(_ context.Context, source OutboxEven
 	order.Shipment = &shipment
 	order.Status = StatusShipmentCreated
 	order.UpdatedAt = next.OccurredAt
-	s.outbox = append(s.outbox, next)
+	next.Payload = map[string]any{
+		"order_status": string(StatusShipmentCreated),
+		"shipment": map[string]any{
+			"shipment_id":     shipment.ShipmentID,
+			"carrier":         shipment.Carrier,
+			"tracking_number": shipment.TrackingNumber,
+		},
+	}
+	s.appendOutboxEvent(next)
 	s.auditLogs = append(s.auditLogs, audit)
 	return nil
 }
@@ -231,7 +263,8 @@ func (s *MemoryStore) RecordShipmentFailed(_ context.Context, source OutboxEvent
 		Status: "failed",
 	}
 	order.UpdatedAt = next.OccurredAt
-	s.outbox = append(s.outbox, next)
+	next.Payload = failurePayload("shipment", audit.Details["error"])
+	s.appendOutboxEvent(next)
 	s.auditLogs = append(s.auditLogs, audit)
 	return nil
 }
@@ -280,7 +313,9 @@ func (s *MemoryStore) OutboxEvents() []OutboxEvent {
 	defer s.mu.RUnlock()
 
 	events := make([]OutboxEvent, len(s.outbox))
-	copy(events, s.outbox)
+	for idx, event := range s.outbox {
+		events[idx] = event.WithEnvelopeDefaults()
+	}
 	return events
 }
 
@@ -296,18 +331,27 @@ func (s *MemoryStore) AuditLogs() []AuditLog {
 }
 
 func (s *MemoryStore) PendingOutboxEvents(_ context.Context, limit int) ([]OutboxEvent, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if limit <= 0 {
 		limit = len(s.outbox)
 	}
+	if s.claimedOutbox == nil {
+		s.claimedOutbox = make(map[string]time.Time)
+	}
+	now := time.Now().UTC()
+	claimUntil := now.Add(30 * time.Second)
 	events := make([]OutboxEvent, 0, min(limit, len(s.outbox)))
 	for _, event := range s.outbox {
 		if _, ok := s.publishedOutbox[event.MessageID]; ok {
 			continue
 		}
-		events = append(events, event)
+		if claimedUntil, ok := s.claimedOutbox[event.MessageID]; ok && claimedUntil.After(now) {
+			continue
+		}
+		s.claimedOutbox[event.MessageID] = claimUntil
+		events = append(events, event.WithEnvelopeDefaults())
 		if len(events) == limit {
 			break
 		}
@@ -367,7 +411,39 @@ func (s *MemoryStore) MarkOutboxPublished(_ context.Context, messageID string, p
 	defer s.mu.Unlock()
 
 	s.publishedOutbox[messageID] = publishedAt
+	delete(s.claimedOutbox, messageID)
 	return nil
+}
+
+func (s *MemoryStore) appendOutboxEvent(event OutboxEvent) {
+	s.outbox = append(s.outbox, event.WithEnvelopeDefaults())
+}
+
+func failurePayload(stage, reason string) map[string]any {
+	if reason == "" {
+		reason = "unspecified"
+	}
+	return map[string]any{
+		"failure": map[string]any{
+			"stage":  stage,
+			"reason": reason,
+		},
+	}
+}
+
+func orderStatusEventPayload(status OrderStatus, at time.Time, audit AuditLog) map[string]any {
+	payload := map[string]any{"order_status": string(status)}
+	switch status {
+	case StatusCompleted:
+		payload["completed_at"] = at.UTC().Format(time.RFC3339Nano)
+	case StatusCancelled:
+		payload["cancelled_at"] = at.UTC().Format(time.RFC3339Nano)
+	case StatusManualReview:
+		if reason := audit.Details["review_reason"]; reason != "" {
+			payload["review_reason"] = reason
+		}
+	}
+	return payload
 }
 
 func scopedKey(merchantID, value string) string {

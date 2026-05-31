@@ -2,6 +2,7 @@ package commerce
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -98,12 +99,21 @@ func (s *Service) CreateOrderContext(ctx context.Context, merchantID, idempotenc
 	messageID := s.nextID("msg")
 	event := OutboxEvent{
 		MessageID:     messageID,
+		SchemaVersion: EventSchemaVersion,
+		Producer:      ProducerForEventType("order.created"),
 		CorrelationID: correlationID,
 		CausationID:   messageID,
 		EventType:     "order.created",
 		OrderID:       order.OrderID,
 		MerchantID:    merchantID,
 		OccurredAt:    now,
+		Payload: map[string]any{
+			"external_order_id": order.ExternalOrderID,
+			"order_status":      string(order.Status),
+			"currency":          order.Currency,
+			"total_amount":      order.Totals.Total.Amount,
+			"item_count":        len(order.Items),
+		},
 	}
 
 	audit := AuditLog{
@@ -151,12 +161,22 @@ func (s *Service) CancelOrderContext(ctx context.Context, orderID, correlationID
 	messageID := s.nextID("msg")
 	event := OutboxEvent{
 		MessageID:     messageID,
+		SchemaVersion: EventSchemaVersion,
+		Producer:      ProducerForEventType("order.cancel_requested"),
 		CorrelationID: correlationID,
 		CausationID:   messageID,
 		EventType:     "order.cancel_requested",
 		OrderID:       orderID,
 		MerchantID:    order.MerchantID,
 		OccurredAt:    now,
+		Payload: map[string]any{
+			"order_status": string(StatusCancellationPending),
+			"reason":       strings.TrimSpace(actor.Reason),
+			"requested_by": map[string]any{
+				"type": strings.TrimSpace(actor.Type),
+				"id":   strings.TrimSpace(actor.ID),
+			},
+		},
 	}
 	audit := AuditLog{
 		MerchantID:    order.MerchantID,
@@ -183,7 +203,11 @@ func (s *Service) AuditLogs() []AuditLog {
 }
 
 func (s *Service) nextID(prefix string) string {
-	return fmt.Sprintf("%s_%012d", prefix, s.counter.Add(1))
+	var bytes [16]byte
+	if _, err := cryptorand.Read(bytes[:]); err == nil {
+		return fmt.Sprintf("%s_%s", prefix, hex.EncodeToString(bytes[:]))
+	}
+	return fmt.Sprintf("%s_%d_%012d", prefix, s.clock().UnixNano(), s.counter.Add(1))
 }
 
 func opaqueReference(prefix, value string) string {

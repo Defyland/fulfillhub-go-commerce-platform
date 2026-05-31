@@ -48,7 +48,8 @@ Current status:
 3. Orders service stores the order, items, initial saga state, and outbox message.
 4. The in-memory store keeps outbox events in memory for fast testability.
 5. With `DATABASE_URL`, order state and outbox rows are committed in PostgreSQL.
-6. `cmd/fulfillhub-outbox-relay` publishes pending outbox rows to RabbitMQ.
+6. `cmd/fulfillhub-outbox-relay` claims pending outbox rows with short
+   PostgreSQL leases and publishes them to RabbitMQ with publisher confirms.
 7. RabbitMQ consumers can continue trace context, record inbox deduplication,
    schedule bounded retry delivery, and acknowledge or dead-letter deliveries.
 8. `cmd/fulfillhub-worker` locks catalog stock, persists inventory

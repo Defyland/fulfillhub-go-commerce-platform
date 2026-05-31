@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"net/http"
+	"testing"
+	"time"
+)
 
 func TestRateLimitPerMinuteUsesDefault(t *testing.T) {
 	limit, err := rateLimitPerMinute(func(string) string { return "" })
@@ -40,5 +44,55 @@ func TestRateLimitPerMinuteRejectsInvalidOverride(t *testing.T) {
 				t.Fatal("expected error")
 			}
 		})
+	}
+}
+
+func TestMerchantAPIKeysParsesConfiguredPairs(t *testing.T) {
+	keys, err := merchantAPIKeys(func(key string) string {
+		if key == "MERCHANT_API_KEYS" {
+			return "fh_live_a=mer_a,fh_live_b=mer_b"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("merchantAPIKeys returned error: %v", err)
+	}
+	if keys["fh_live_a"] != "mer_a" || keys["fh_live_b"] != "mer_b" {
+		t.Fatalf("api keys = %+v, want configured merchant mappings", keys)
+	}
+}
+
+func TestMerchantAPIKeysRejectsMalformedPairs(t *testing.T) {
+	_, err := merchantAPIKeys(func(key string) string {
+		if key == "MERCHANT_API_KEYS" {
+			return "fh_live_a:mer_a"
+		}
+		return ""
+	})
+	if err == nil {
+		t.Fatal("merchantAPIKeys must reject malformed pairs")
+	}
+}
+
+func TestBoolEnvRejectsInvalidBooleans(t *testing.T) {
+	_, err := boolEnv(func(key string) string {
+		if key == "ALLOW_LOCAL_OPS_TOKEN" {
+			return "maybe"
+		}
+		return ""
+	}, "ALLOW_LOCAL_OPS_TOKEN")
+	if err == nil {
+		t.Fatal("boolEnv must reject invalid booleans")
+	}
+}
+
+func TestHTTPServerUsesProductionTimeouts(t *testing.T) {
+	server := newHTTPServer(":0", http.NewServeMux())
+
+	if server.ReadHeaderTimeout < 5*time.Second {
+		t.Fatalf("ReadHeaderTimeout = %s, want at least 5s", server.ReadHeaderTimeout)
+	}
+	if server.ReadTimeout == 0 || server.WriteTimeout == 0 || server.IdleTimeout == 0 {
+		t.Fatalf("server timeouts must be configured: %+v", server)
 	}
 }

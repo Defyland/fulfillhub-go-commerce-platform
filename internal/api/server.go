@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"sort"
@@ -42,6 +43,8 @@ type Server struct {
 	sagaMetrics   SagaMetricsProvider
 	metricsToken  string
 	readiness     map[string]ReadinessChecker
+	localOpsToken bool
+	maxBodyBytes  int64
 }
 
 type RateLimiter interface {
@@ -81,6 +84,9 @@ type Options struct {
 	SagaMetrics           SagaMetricsProvider
 	MetricsBearerToken    string
 	ReadinessChecks       map[string]ReadinessChecker
+	APIKeys               map[string]string
+	AllowLocalOpsToken    bool
+	MaxRequestBodyBytes   int64
 }
 
 type metrics struct {
@@ -150,7 +156,10 @@ type cancelOrderRequest struct {
 }
 
 func NewServer(service *commerce.Service) http.Handler {
-	return NewServerWithOptions(service, Options{})
+	return NewServerWithOptions(service, Options{
+		APIKeys:            LocalDemoAPIKeys(),
+		AllowLocalOpsToken: true,
+	})
 }
 
 func NewServerWithOptions(service *commerce.Service, options Options) http.Handler {
@@ -172,12 +181,14 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 		}
 		readiness[name] = check
 	}
+	apiKeys := options.APIKeys
+	maxBodyBytes := options.MaxRequestBodyBytes
+	if maxBodyBytes <= 0 {
+		maxBodyBytes = 1 << 20
+	}
 	return &Server{
-		service: service,
-		apiKeys: map[string]string{
-			"fh_live_merchant_demo": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
-			"fh_live_second_demo":   "mer_01hzy8v4egscg4r7kb3m7jq9qx",
-		},
+		service:       service,
+		apiKeys:       apiKeys,
 		limiter:       options.RateLimiter,
 		logger:        options.Logger,
 		tracer:        tracerProvider.Tracer("github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"),
@@ -190,6 +201,15 @@ func NewServerWithOptions(service *commerce.Service, options Options) http.Handl
 		sagaMetrics:   options.SagaMetrics,
 		metricsToken:  strings.TrimSpace(options.MetricsBearerToken),
 		readiness:     readiness,
+		localOpsToken: options.AllowLocalOpsToken,
+		maxBodyBytes:  maxBodyBytes,
+	}
+}
+
+func LocalDemoAPIKeys() map[string]string {
+	return map[string]string{
+		"fh_live_merchant_demo": "mer_01hzy6v4egscg4r7kb3m7jq2dk",
+		"fh_live_second_demo":   "mer_01hzy8v4egscg4r7kb3m7jq9qx",
 	}
 }
 
@@ -277,8 +297,7 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request, requestID, 
 	}
 
 	var req commerce.CreateOrderRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.", false, nil, requestID, correlationID)
+	if ok := s.decodeJSON(w, r, &req, requestID, correlationID); !ok {
 		return
 	}
 
@@ -399,8 +418,7 @@ func (s *Server) cancelOrder(w http.ResponseWriter, r *http.Request, orderID, re
 		attribute.String("fulfillhub.operation", "cancel_order"),
 	)
 	var cancelReq cancelOrderRequest
-	if err := json.NewDecoder(r.Body).Decode(&cancelReq); err != nil {
-		s.writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.", false, nil, requestID, correlationID)
+	if ok := s.decodeJSON(w, r, &cancelReq, requestID, correlationID); !ok {
 		return
 	}
 	if strings.TrimSpace(cancelReq.Reason) == "" || strings.TrimSpace(cancelReq.RequestedBy.Type) == "" || strings.TrimSpace(cancelReq.RequestedBy.ID) == "" {
@@ -465,7 +483,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, requestID,
 		return act, true
 	}
 	if token := bearerToken(r.Header.Get("Authorization")); token != "" {
-		if len(s.opsSecrets) == 0 && token == "ops-token" {
+		if s.localOpsToken && len(s.opsSecrets) == 0 && token == "ops-token" {
 			act := actor{Ops: true, ActorID: "local-ops"}
 			recordActor(r.Context(), act)
 			return act, true
@@ -480,6 +498,26 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, requestID,
 	}
 	s.writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required.", false, nil, requestID, correlationID)
 	return actor{}, false
+}
+
+func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, dest any, requestID, correlationID string) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, s.maxBodyBytes)
+	decoder := json.NewDecoder(r.Body)
+	if err := decoder.Decode(dest); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			s.writeError(w, http.StatusRequestEntityTooLarge, "payload_too_large", "Request body exceeds the maximum allowed size.", false, nil, requestID, correlationID)
+			return false
+		}
+		s.writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.", false, nil, requestID, correlationID)
+		return false
+	}
+	var extra struct{}
+	if err := decoder.Decode(&extra); err != io.EOF {
+		s.writeError(w, http.StatusBadRequest, "invalid_json", "Request body is not valid JSON.", false, nil, requestID, correlationID)
+		return false
+	}
+	return true
 }
 
 func (s *Server) authorizeMetrics(w http.ResponseWriter, r *http.Request, requestID, correlationID string) bool {
