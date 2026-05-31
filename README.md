@@ -45,7 +45,7 @@ The current implementation is a Go modular monolith with strongly isolated packa
 
 - HTTP API entrypoint for merchant and operations access
 - Domain modules for orders, inventory, payments, shipments, notifications, and reporting
-- In-memory store for fast local tests and PostgreSQL for transactional state, outbox, inbox, and audit logs when `DATABASE_URL` is configured
+- In-memory store for explicit local demos and tests; API runtime requires PostgreSQL unless `ALLOW_IN_MEMORY_STORE=true` is set
 - Transactional outbox events with correlation and causation IDs, plus a RabbitMQ relay for domain fan-out and asynchronous side effects
 - Redis-backed rate limiting when `REDIS_URL` is configured
 - OpenTelemetry Collector, Prometheus, and Grafana for observability
@@ -129,7 +129,7 @@ The message catalog and routing design are documented in [docs/events/catalog.md
 
 The relational model centers on transactional consistency around orders and stock.
 
-- The current executable slice supports in-memory storage for fast tests and PostgreSQL storage for durable runtime state
+- The current executable slice supports in-memory storage only for explicit local demos/tests and PostgreSQL storage for durable runtime state
 - Order creation derives `merchant_id` from `X-API-Key`, not from request bodies
 - Idempotency keys protect duplicate order creation requests
 - Duplicate external order IDs are rejected per merchant
@@ -251,12 +251,16 @@ Run the service locally with Go:
 git clone git@github.com:Defyland/fulfillhub-go-commerce-platform.git
 cd fulfillhub-go-commerce-platform
 MERCHANT_API_KEYS='fh_live_merchant_demo=mer_01hzy6v4egscg4r7kb3m7jq2dk,fh_live_second_demo=mer_01hzy8v4egscg4r7kb3m7jq9qx' \
+ALLOW_IN_MEMORY_STORE=true \
   go run ./cmd/fulfillhub-api
 ```
 
 The API listens on `:8080` by default. Use `HTTP_ADDR=:9090` to choose another address.
 For quick local demos only, `ALLOW_LOCAL_DEMO_CREDENTIALS=true` loads the same
 demo API keys without putting them in `MERCHANT_API_KEYS`.
+The in-memory store is also a local-demo switch. Production-like runs should use
+`DATABASE_URL`; without it the API refuses to start unless
+`ALLOW_IN_MEMORY_STORE=true` is explicitly present.
 
 Enable local OpenTelemetry span output with:
 
@@ -287,7 +291,9 @@ The static `Bearer ops-token` fallback is disabled by default. Enable it only
 for local demos with `ALLOW_LOCAL_OPS_TOKEN=true`; production-like runs should
 use `OPS_JWT_SECRET`.
 
-To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API applies embedded migrations and switches from the in-memory store to the PostgreSQL store.
+To run with PostgreSQL persistence, provide `DATABASE_URL`. On startup the API
+applies embedded migrations and uses the PostgreSQL store for orders, outbox,
+inbox, and audit data.
 
 ```sh
 DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub?sslmode=disable' \

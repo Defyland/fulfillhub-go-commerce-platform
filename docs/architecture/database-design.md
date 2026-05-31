@@ -1,6 +1,6 @@
 # Database Design
 
-PostgreSQL is the durable source of truth when `DATABASE_URL` is configured. The service still supports the in-memory store for fast local tests, but embedded migrations and a SQL-backed order store are implemented.
+PostgreSQL is the durable source of truth for production-like runtime. The service still supports the in-memory store for fast local tests and explicit demos, but the API refuses to start without `DATABASE_URL` unless `ALLOW_IN_MEMORY_STORE=true` is set.
 
 ## Primary tables
 

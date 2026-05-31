@@ -44,6 +44,10 @@ func main() {
 	if err != nil {
 		fatal(logger, "load local ops token setting", err)
 	}
+	databaseURL, allowInMemoryStore, err := durableStoreConfig(os.Getenv)
+	if err != nil {
+		fatal(logger, "load durable store setting", err)
+	}
 	apiKeys, err := merchantAPIKeys(os.Getenv)
 	if err != nil {
 		fatal(logger, "load merchant api keys", err)
@@ -58,8 +62,8 @@ func main() {
 	readinessChecks := map[string]api.ReadinessChecker{
 		"store": api.ReadinessCheckFunc(func(context.Context) error { return nil }),
 	}
-	store := commerce.Store(commerce.NewMemoryStore())
-	if databaseURL := os.Getenv("DATABASE_URL"); databaseURL != "" {
+	var store commerce.Store
+	if databaseURL != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		postgresStore, err := postgres.Open(ctx, databaseURL)
@@ -72,6 +76,9 @@ func main() {
 		}
 		store = postgresStore
 		readinessChecks["store"] = api.ReadinessCheckFunc(postgresStore.DB().PingContext)
+	} else if allowInMemoryStore {
+		logger.Warn("using in-memory store; order state and outbox are not durable")
+		store = commerce.NewMemoryStore()
 	}
 
 	options := api.Options{
@@ -190,6 +197,18 @@ func rateLimitPerMinute(getenv func(string) string) (int64, error) {
 		return 0, fmt.Errorf("RATE_LIMIT_PER_MINUTE must be a positive integer")
 	}
 	return limit, nil
+}
+
+func durableStoreConfig(getenv func(string) string) (databaseURL string, allowInMemory bool, err error) {
+	databaseURL = strings.TrimSpace(getenv("DATABASE_URL"))
+	allowInMemory, err = boolEnv(getenv, "ALLOW_IN_MEMORY_STORE")
+	if err != nil {
+		return "", false, err
+	}
+	if databaseURL == "" && !allowInMemory {
+		return "", false, fmt.Errorf("DATABASE_URL is required unless ALLOW_IN_MEMORY_STORE=true")
+	}
+	return databaseURL, allowInMemory, nil
 }
 
 func merchantAPIKeys(getenv func(string) string) (map[string]string, error) {

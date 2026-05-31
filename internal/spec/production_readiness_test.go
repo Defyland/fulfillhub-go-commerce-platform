@@ -235,6 +235,7 @@ func TestRuntimeReliabilityHardeningIsEncodedInCode(t *testing.T) {
 		},
 		"cmd/fulfillhub-api/main.go": {
 			"MERCHANT_API_KEYS",
+			"DATABASE_URL is required unless ALLOW_IN_MEMORY_STORE=true",
 			"ALLOW_LOCAL_OPS_TOKEN",
 			"ReadHeaderTimeout",
 			"ReadTimeout",

@@ -1,6 +1,6 @@
 # Architecture Overview
 
-FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice uses an in-memory store for fast tests, switches to PostgreSQL-backed order/outbox persistence when `DATABASE_URL` is configured, includes RabbitMQ relay and worker processes, enables Redis-backed rate limiting when `REDIS_URL` is configured, and exports OpenTelemetry traces to stdout or an OTLP collector when configured.
+FulfillHub starts as a modular monolith in Go with domain modules separated by interfaces, transaction boundaries, and event contracts. The current executable slice keeps an in-memory store for explicit local demos and fast tests, requires PostgreSQL-backed order/outbox persistence for production-like API runs unless `ALLOW_IN_MEMORY_STORE=true` is set, includes RabbitMQ relay and worker processes, enables Redis-backed rate limiting when `REDIS_URL` is configured, and exports OpenTelemetry traces to stdout or an OTLP collector when configured.
 
 ## System context
 
@@ -35,7 +35,7 @@ flowchart LR
 Current status:
 
 - Orders and HTTP API are implemented.
-- In-memory order storage and outbox event recording are implemented.
+- In-memory order storage and outbox event recording are implemented for explicit local demos and fast tests.
 - PostgreSQL persistence is implemented.
 - RabbitMQ relay code is implemented.
 - RabbitMQ consumer primitives are implemented with trace continuation, inbox idempotency, retry scheduling, and ack/nack behavior.
@@ -46,8 +46,10 @@ Current status:
 1. Merchant submits `POST /api/v1/orders` with API key and idempotency key.
 2. Orders module validates tenant access and request shape.
 3. Orders service stores the order, items, initial saga state, and outbox message.
-4. The in-memory store keeps outbox events in memory for fast testability.
-5. With `DATABASE_URL`, order state and outbox rows are committed in PostgreSQL.
+4. Production-like API runs require `DATABASE_URL`; only explicit local demos use
+   `ALLOW_IN_MEMORY_STORE=true`.
+5. With PostgreSQL configured, order state and outbox rows are committed in the
+   same durable transaction.
 6. `cmd/fulfillhub-outbox-relay` claims pending outbox rows with short
    PostgreSQL leases and publishes them to RabbitMQ with publisher confirms.
 7. RabbitMQ consumers can continue trace context, record inbox deduplication,

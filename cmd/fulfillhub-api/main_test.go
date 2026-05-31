@@ -74,6 +74,47 @@ func TestMerchantAPIKeysRejectsMalformedPairs(t *testing.T) {
 	}
 }
 
+func TestDurableStoreConfigRequiresDatabaseURLByDefault(t *testing.T) {
+	_, _, err := durableStoreConfig(func(string) string { return "" })
+	if err == nil {
+		t.Fatal("durableStoreConfig must reject missing DATABASE_URL unless in-memory is explicit")
+	}
+}
+
+func TestDurableStoreConfigAllowsExplicitInMemoryStore(t *testing.T) {
+	databaseURL, allowInMemory, err := durableStoreConfig(func(key string) string {
+		if key == "ALLOW_IN_MEMORY_STORE" {
+			return "true"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("durableStoreConfig returned error: %v", err)
+	}
+	if databaseURL != "" || !allowInMemory {
+		t.Fatalf("config = databaseURL:%q allowInMemory:%v, want empty database URL and explicit memory", databaseURL, allowInMemory)
+	}
+}
+
+func TestDurableStoreConfigPrefersDatabaseURL(t *testing.T) {
+	databaseURL, allowInMemory, err := durableStoreConfig(func(key string) string {
+		switch key {
+		case "DATABASE_URL":
+			return " postgres://example "
+		case "ALLOW_IN_MEMORY_STORE":
+			return "true"
+		default:
+			return ""
+		}
+	})
+	if err != nil {
+		t.Fatalf("durableStoreConfig returned error: %v", err)
+	}
+	if databaseURL != "postgres://example" || !allowInMemory {
+		t.Fatalf("config = databaseURL:%q allowInMemory:%v, want trimmed database URL and explicit memory flag preserved", databaseURL, allowInMemory)
+	}
+}
+
 func TestBoolEnvRejectsInvalidBooleans(t *testing.T) {
 	_, err := boolEnv(func(key string) string {
 		if key == "ALLOW_LOCAL_OPS_TOKEN" {
