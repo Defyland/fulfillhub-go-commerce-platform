@@ -228,6 +228,20 @@ func TestRuntimeReliabilityHardeningIsEncodedInCode(t *testing.T) {
 			"NotifyReturn",
 			"PublishWithContext(ctx, DomainExchange, RoutingKey(event.EventType), true, false",
 		},
+		"internal/messaging/rabbitmq_consumer.go": {
+			"channel.Confirm(false)",
+			"NotifyPublish",
+			"NotifyReturn",
+			"PublishWithContext(ctx, RetryExchange, routingKey, true, false",
+			"waitForAMQPPublishOutcome",
+		},
+		"internal/messaging/dlq.go": {
+			"channel.Confirm(false)",
+			"NotifyPublish",
+			"NotifyReturn",
+			"PublishWithContext(ctx, config.Exchange, config.RoutingKey, true, false",
+			"waitForAMQPPublishOutcome",
+		},
 		"internal/postgres/store.go": {
 			"FOR UPDATE SKIP LOCKED",
 			"claimed_until",

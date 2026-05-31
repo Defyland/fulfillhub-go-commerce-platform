@@ -21,6 +21,11 @@ func ReplayDLQ(ctx context.Context, channel *amqp.Channel, config DLQReplayConfi
 	if config.Limit <= 0 {
 		config.Limit = 100
 	}
+	if err := channel.Confirm(false); err != nil {
+		return 0, fmt.Errorf("enable dlq replay publisher confirms: %w", err)
+	}
+	confirms := channel.NotifyPublish(make(chan amqp.Confirmation, 1))
+	returns := channel.NotifyReturn(make(chan amqp.Return, 1))
 
 	replayed := 0
 	for replayed < config.Limit {
@@ -32,10 +37,11 @@ func ReplayDLQ(ctx context.Context, channel *amqp.Channel, config DLQReplayConfi
 			return replayed, nil
 		}
 
-		if err := channel.PublishWithContext(ctx, config.Exchange, config.RoutingKey, false, false, amqp.Publishing{
+		messageID := delivery.MessageId
+		if err := channel.PublishWithContext(ctx, config.Exchange, config.RoutingKey, true, false, amqp.Publishing{
 			ContentType:   delivery.ContentType,
 			DeliveryMode:  amqp.Persistent,
-			MessageId:     delivery.MessageId,
+			MessageId:     messageID,
 			CorrelationId: delivery.CorrelationId,
 			Timestamp:     delivery.Timestamp,
 			Type:          delivery.Type,
@@ -44,6 +50,10 @@ func ReplayDLQ(ctx context.Context, channel *amqp.Channel, config DLQReplayConfi
 		}); err != nil {
 			_ = delivery.Nack(false, true)
 			return replayed, fmt.Errorf("republish dlq message: %w", err)
+		}
+		if err := waitForAMQPPublishOutcome(ctx, confirms, returns, messageID); err != nil {
+			_ = delivery.Nack(false, true)
+			return replayed, fmt.Errorf("confirm dlq replay message: %w", err)
 		}
 		if err := delivery.Ack(false); err != nil {
 			return replayed, fmt.Errorf("ack dlq message: %w", err)

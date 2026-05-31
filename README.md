@@ -122,7 +122,8 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
   or fulfillment failure events and records a durable email notification projection
 - Compensation worker consumes inventory, payment, or shipment failure events and records durable compensation outcomes, stock releases, and payment void projections
 - Consumer idempotency is modeled through inbox deduplication, bounded retry
-  queues, and DLQ routing in the RabbitMQ topology
+  queues, publisher-confirmed retry publishes, and DLQ routing/replay in the
+  RabbitMQ topology
 
 The message catalog and routing design are documented in [docs/events/catalog.md](./docs/events/catalog.md), the versioned contract policy in [docs/events/README.md](./docs/events/README.md), the event threat model in [docs/events/threat-model.md](./docs/events/threat-model.md), and the saga diagram in [docs/diagrams/order-saga-sequence.md](./docs/diagrams/order-saga-sequence.md).
 

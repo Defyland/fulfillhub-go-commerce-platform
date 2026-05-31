@@ -46,9 +46,12 @@ defined in [threat-model.md](./threat-model.md).
 - Consumers must write `inbox_messages` before acknowledging broker delivery
 - Transient handler failures are acknowledged only after a copy is published to
   `fulfillhub.retry`, where queue TTL delays redelivery back to
-  `fulfillhub.domain`
+  `fulfillhub.domain`; retry publishes use mandatory routing and publisher
+  confirms before the original delivery is acknowledged
 - Exhausted retries are nacked from the main queue and route to `fulfillhub.dlx`
-- Replay from DLQ must be an explicit operator action recorded in `audit_logs`
+- Replay from DLQ must be an explicit operator action recorded in `audit_logs`;
+  replay republishes also wait for broker confirmation before acking the DLQ
+  delivery
 
 ## Implementation status
 
@@ -59,13 +62,14 @@ defined in [threat-model.md](./threat-model.md).
 - `cmd/fulfillhub-outbox-relay` claims pending events with a short lease,
   publishes them to RabbitMQ with publisher confirms and mandatory routing, and
   injects `traceparent` plus `causation_id` into AMQP headers.
-- `cmd/fulfillhub-dlq-replay` requires PostgreSQL audit logging and records
-  `dlq.replay` details for successful or failed replay attempts.
+- `cmd/fulfillhub-dlq-replay` requires PostgreSQL audit logging, republishes
+  with mandatory routing and publisher confirms, and records `dlq.replay`
+  details for successful or failed replay attempts.
 - Inbox idempotency is implemented for memory tests and PostgreSQL-backed consumers.
 - RabbitMQ consumers extract `traceparent`, create consume spans, record inbox
   entries before handlers run, backfill causal metadata from AMQP headers when
-  needed, ack duplicates, publish bounded retries for handler failures, and
-  nack exhausted failures to DLQs.
+  needed, ack duplicates, publish bounded retries with publisher confirms for
+  handler failures, and nack exhausted failures to DLQs.
 - RabbitMQ topology declaration creates each primary queue, retry queue, and
   dead-letter queue listed in the queue design table.
 - `cmd/fulfillhub-worker` consumes inventory, payment, shipment, order

@@ -9,7 +9,7 @@ FulfillHub coordinates multiple side effects that cannot be completed inside one
 
 ## Decision
 
-FulfillHub will use RabbitMQ for asynchronous domain events, a transactional outbox for reliable publish after commit, and inbox tables for idempotent consumer processing.
+FulfillHub will use RabbitMQ for asynchronous domain events, a transactional outbox for reliable publish after commit, and inbox tables for idempotent consumer processing. Outbox, retry, and DLQ replay publish paths must use publisher confirms before marking the source record or delivery complete.
 
 ## Consequences
 

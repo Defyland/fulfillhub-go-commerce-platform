@@ -114,16 +114,20 @@ func (p *RabbitPublisher) Publish(ctx context.Context, event commerce.OutboxEven
 }
 
 func (p *RabbitPublisher) waitForPublishOutcome(ctx context.Context, messageID string) error {
+	return waitForAMQPPublishOutcome(ctx, p.confirms, p.returns, messageID)
+}
+
+func waitForAMQPPublishOutcome(ctx context.Context, confirms <-chan amqp.Confirmation, returns <-chan amqp.Return, messageID string) error {
 	for {
 		select {
-		case returned, ok := <-p.returns:
+		case returned, ok := <-returns:
 			if !ok {
 				return fmt.Errorf("rabbitmq return channel closed")
 			}
 			if returned.MessageId == messageID {
 				return fmt.Errorf("rabbitmq message %s was returned as unroutable: %s", messageID, returned.ReplyText)
 			}
-		case confirmation, ok := <-p.confirms:
+		case confirmation, ok := <-confirms:
 			if !ok {
 				return fmt.Errorf("rabbitmq confirm channel closed")
 			}
