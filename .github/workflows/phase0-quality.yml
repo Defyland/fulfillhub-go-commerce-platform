@@ -82,10 +82,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
-      - name: PostgreSQL integration tests
+      - name: PostgreSQL integration and concurrency tests
         env:
           DATABASE_URL: postgres://fulfillhub:postgres@localhost:5432/fulfillhub_test?sslmode=disable
-        run: go test ./internal/postgres -run TestPostgresStoreIntegration -count=1
+        run: go test ./internal/postgres -run 'TestPostgres(StoreIntegration|InventoryReservationConcurrency)' -count=1
 
   rabbitmq-integration:
     runs-on: ubuntu-latest

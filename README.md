@@ -415,11 +415,12 @@ The spec suite builds every documented core saga event through the runtime
 service and worker handlers, then validates the resulting envelope and payload
 against `docs/events/*.v1.json`.
 
-Run the PostgreSQL integration test when a database is available:
+Run the PostgreSQL integration and inventory concurrency tests when a database
+is available:
 
 ```sh
 DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub_test?sslmode=disable' \
-  go test ./internal/postgres -run TestPostgresStoreIntegration -count=1
+  go test ./internal/postgres -run 'TestPostgres(StoreIntegration|InventoryReservationConcurrency)' -count=1
 ```
 
 Run the RabbitMQ integration test when a broker is available:
