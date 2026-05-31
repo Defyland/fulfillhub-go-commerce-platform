@@ -8,7 +8,7 @@
 | `Warehouse` | Inventory location used for reservation and shipment origin | Must belong to a merchant or approved network |
 | `InventoryItem` | Current sellable stock for a SKU at a warehouse | `available_quantity + reserved_quantity` must stay consistent |
 | `Order` | Root aggregate that owns the orchestration state machine | External order ID must be unique per merchant |
-| `OrderItem` | Snapshot of requested SKU, quantity, and price | Immutable after order acceptance |
+| `OrderItem` | Snapshot of requested SKU, quantity, and price | Immutable after order acceptance; SKU must be unique inside an order |
 | `StockReservation` | Holds inventory during payment and shipment coordination | Reservation state changes must be idempotent and tied to a warehouse |
 | `PaymentAuthorization` | Payment provider attempt and outcome | Only one active successful authorization per order |
 | `Shipment` | Carrier booking and timeline | Cannot exist before payment authorization in the happy path |
@@ -44,5 +44,6 @@ shipment_created -> cancellation_pending -> manual_review
 
 - All user-visible records are scoped by `merchant_id`.
 - Idempotency keys are required for order creation.
+- Duplicate line-item SKUs are rejected before persistence so memory and PostgreSQL stores share the same contract.
 - Monetary values use minor currency units.
 - Manual operator actions must be audit logged.

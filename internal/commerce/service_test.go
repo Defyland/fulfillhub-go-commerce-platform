@@ -185,6 +185,31 @@ func TestCreateOrderRejectsDuplicateExternalOrderID(t *testing.T) {
 	}
 }
 
+func TestCreateOrderRejectsDuplicateSKUs(t *testing.T) {
+	service := NewService(NewMemoryStore())
+	req := validCreateOrderRequest()
+	req.Items = append(req.Items, OrderItemRequest{
+		SKU:      " SKU-CHAIR-BLK ",
+		Quantity: 1,
+		UnitPrice: Money{
+			Amount:   18900,
+			Currency: "USD",
+		},
+	})
+
+	_, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", req)
+	var validation ValidationError
+	if !errors.As(err, &validation) {
+		t.Fatalf("error = %v, want ValidationError", err)
+	}
+	if len(validation.Fields) != 1 {
+		t.Fatalf("validation fields = %+v, want one duplicate SKU error", validation.Fields)
+	}
+	if validation.Fields[0].Field != "items[1].sku" {
+		t.Fatalf("field = %q, want items[1].sku", validation.Fields[0].Field)
+	}
+}
+
 func TestServicePassesContextToStore(t *testing.T) {
 	store := &contextCapturingStore{}
 	service := NewService(store)

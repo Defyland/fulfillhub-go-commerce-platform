@@ -250,9 +250,15 @@ func validateCreateOrder(merchantID, idempotencyKey string, req CreateOrderReque
 	if len(req.Items) == 0 {
 		fields = append(fields, FieldError{Field: "items", Issue: "must contain at least one item"})
 	}
+	seenSKUs := map[string]int{}
 	for idx, item := range req.Items {
-		if strings.TrimSpace(item.SKU) == "" {
+		sku := strings.TrimSpace(item.SKU)
+		if sku == "" {
 			fields = append(fields, FieldError{Field: fmt.Sprintf("items[%d].sku", idx), Issue: "is required"})
+		} else if firstIdx, ok := seenSKUs[sku]; ok {
+			fields = append(fields, FieldError{Field: fmt.Sprintf("items[%d].sku", idx), Issue: fmt.Sprintf("duplicates items[%d].sku", firstIdx)})
+		} else {
+			seenSKUs[sku] = idx
 		}
 		if item.Quantity < 1 {
 			fields = append(fields, FieldError{Field: fmt.Sprintf("items[%d].quantity", idx), Issue: "must be greater than zero"})

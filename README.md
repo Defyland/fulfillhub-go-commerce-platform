@@ -142,6 +142,7 @@ The data model, indexes, and transaction boundaries are detailed in [docs/archit
 The current implementation includes Go tests for:
 
 - domain validation, totals, idempotency, duplicate external order IDs, and outbox creation
+- duplicate line-item SKU rejection before persistence
 - API request handling through `httptest`
 - authentication and tenant authorization
 - validation and conflict error contracts
