@@ -147,6 +147,82 @@ type errorDetail struct {
 	Issue string `json:"issue"`
 }
 
+type createOrderRequest struct {
+	ExternalOrderID string               `json:"external_order_id"`
+	Currency        string               `json:"currency"`
+	Customer        customerRequest      `json:"customer"`
+	ShippingAddress addressRequest       `json:"shipping_address"`
+	Items           []orderItemRequest   `json:"items"`
+	PaymentMethod   paymentMethodRequest `json:"payment_method"`
+}
+
+type customerRequest struct {
+	ID       string `json:"id"`
+	Email    string `json:"email"`
+	FullName string `json:"full_name"`
+}
+
+type addressRequest struct {
+	Line1      string `json:"line_1"`
+	Line2      string `json:"line_2,omitempty"`
+	City       string `json:"city"`
+	State      string `json:"state"`
+	PostalCode string `json:"postal_code"`
+	Country    string `json:"country"`
+}
+
+type orderItemRequest struct {
+	SKU       string       `json:"sku"`
+	Quantity  int          `json:"quantity"`
+	UnitPrice moneyRequest `json:"unit_price"`
+}
+
+type moneyRequest struct {
+	Amount   int64  `json:"amount"`
+	Currency string `json:"currency"`
+}
+
+type paymentMethodRequest struct {
+	Provider     string `json:"provider"`
+	PaymentToken string `json:"payment_token"`
+}
+
+func (r createOrderRequest) toCommand() commerce.CreateOrderCommand {
+	items := make([]commerce.OrderItemInput, 0, len(r.Items))
+	for _, item := range r.Items {
+		items = append(items, commerce.OrderItemInput{
+			SKU:      item.SKU,
+			Quantity: item.Quantity,
+			UnitPrice: commerce.Money{
+				Amount:   item.UnitPrice.Amount,
+				Currency: item.UnitPrice.Currency,
+			},
+		})
+	}
+	return commerce.CreateOrderCommand{
+		ExternalOrderID: r.ExternalOrderID,
+		Currency:        r.Currency,
+		Customer: commerce.CustomerInput{
+			ID:       r.Customer.ID,
+			Email:    r.Customer.Email,
+			FullName: r.Customer.FullName,
+		},
+		ShippingAddress: commerce.AddressInput{
+			Line1:      r.ShippingAddress.Line1,
+			Line2:      r.ShippingAddress.Line2,
+			City:       r.ShippingAddress.City,
+			State:      r.ShippingAddress.State,
+			PostalCode: r.ShippingAddress.PostalCode,
+			Country:    r.ShippingAddress.Country,
+		},
+		Items: items,
+		PaymentMethod: commerce.PaymentMethodInput{
+			Provider:     r.PaymentMethod.Provider,
+			PaymentToken: r.PaymentMethod.PaymentToken,
+		},
+	}
+}
+
 type cancelOrderRequest struct {
 	Reason      string `json:"reason"`
 	RequestedBy struct {
@@ -305,12 +381,12 @@ func (s *Server) createOrder(w http.ResponseWriter, r *http.Request, requestID, 
 		return
 	}
 
-	var req commerce.CreateOrderRequest
+	var req createOrderRequest
 	if ok := s.decodeJSON(w, r, &req, requestID, correlationID); !ok {
 		return
 	}
 
-	order, replayed, err := s.service.CreateOrderContext(r.Context(), act.MerchantID, r.Header.Get("Idempotency-Key"), correlationID, req)
+	order, replayed, err := s.service.CreateOrderContext(r.Context(), act.MerchantID, r.Header.Get("Idempotency-Key"), correlationID, req.toCommand())
 	if err != nil {
 		s.handleCommerceError(w, err, requestID, correlationID)
 		return

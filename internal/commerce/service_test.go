@@ -11,7 +11,7 @@ import (
 func TestCreateOrderDerivesMerchantAndWritesOutbox(t *testing.T) {
 	service := NewService(NewMemoryStore())
 
-	order, replayed, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, replayed, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -51,11 +51,11 @@ func TestServiceIDsDoNotRepeatAcrossServiceInstances(t *testing.T) {
 	firstService := NewService(NewMemoryStore())
 	secondService := NewService(NewMemoryStore())
 
-	first, _, err := firstService.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	first, _, err := firstService.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("first CreateOrder returned error: %v", err)
 	}
-	second, _, err := secondService.CreateOrder("mer_demo", "idem-key-0001", "cor_2", validCreateOrderRequest())
+	second, _, err := secondService.CreateOrder("mer_demo", "idem-key-0001", "cor_2", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("second CreateOrder returned error: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestServiceIDsDoNotRepeatAcrossServiceInstances(t *testing.T) {
 
 func TestCreateOrderOutboxUsesVersionedEnvelope(t *testing.T) {
 	service := NewService(NewMemoryStore())
-	if _, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest()); err != nil {
+	if _, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand()); err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
 
@@ -110,11 +110,11 @@ func TestCreateOrderOutboxUsesVersionedEnvelope(t *testing.T) {
 func TestCreateOrderIdempotencyReturnsExistingOrder(t *testing.T) {
 	service := NewService(NewMemoryStore())
 
-	first, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	first, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("first CreateOrder returned error: %v", err)
 	}
-	second, replayed, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_2", validCreateOrderRequest())
+	second, replayed, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_2", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("second CreateOrder returned error: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestCreateOrderIdempotencyReturnsExistingOrder(t *testing.T) {
 
 func TestCancelOrderWritesAuditLog(t *testing.T) {
 	service := NewService(NewMemoryStore())
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -185,7 +185,7 @@ func TestCancelOrderWritesAuditLog(t *testing.T) {
 
 func TestCancelOrderValidatesActorContractFields(t *testing.T) {
 	service := NewService(NewMemoryStore())
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -206,10 +206,10 @@ func TestCancelOrderValidatesActorContractFields(t *testing.T) {
 func TestCreateOrderRejectsDuplicateExternalOrderID(t *testing.T) {
 	service := NewService(NewMemoryStore())
 
-	if _, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest()); err != nil {
+	if _, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand()); err != nil {
 		t.Fatalf("first CreateOrder returned error: %v", err)
 	}
-	_, _, err := service.CreateOrder("mer_demo", "idem-key-0002", "cor_2", validCreateOrderRequest())
+	_, _, err := service.CreateOrder("mer_demo", "idem-key-0002", "cor_2", validCreateOrderCommand())
 	if !errors.Is(err, ErrDuplicateOrder) {
 		t.Fatalf("error = %v, want ErrDuplicateOrder", err)
 	}
@@ -217,8 +217,8 @@ func TestCreateOrderRejectsDuplicateExternalOrderID(t *testing.T) {
 
 func TestCreateOrderRejectsDuplicateSKUs(t *testing.T) {
 	service := NewService(NewMemoryStore())
-	req := validCreateOrderRequest()
-	req.Items = append(req.Items, OrderItemRequest{
+	req := validCreateOrderCommand()
+	req.Items = append(req.Items, OrderItemInput{
 		SKU:      " SKU-CHAIR-BLK ",
 		Quantity: 1,
 		UnitPrice: Money{
@@ -245,7 +245,7 @@ func TestServicePassesContextToStore(t *testing.T) {
 	service := NewService(store)
 	ctx := context.WithValue(context.Background(), contextKey("request_id"), "req_1")
 
-	if _, _, err := service.CreateOrderContext(ctx, "mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest()); err != nil {
+	if _, _, err := service.CreateOrderContext(ctx, "mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand()); err != nil {
 		t.Fatalf("CreateOrderContext returned error: %v", err)
 	}
 
@@ -256,7 +256,7 @@ func TestServicePassesContextToStore(t *testing.T) {
 
 func TestCreateOrderValidatesRequest(t *testing.T) {
 	service := NewService(NewMemoryStore())
-	req := validCreateOrderRequest()
+	req := validCreateOrderCommand()
 	req.Items[0].Quantity = 0
 
 	_, _, err := service.CreateOrder("mer_demo", "short", "cor_1", req)
@@ -300,23 +300,23 @@ func (s *contextCapturingStore) AuditLogs() []AuditLog {
 	return nil
 }
 
-func validCreateOrderRequest() CreateOrderRequest {
-	return CreateOrderRequest{
+func validCreateOrderCommand() CreateOrderCommand {
+	return CreateOrderCommand{
 		ExternalOrderID: "web-100045",
 		Currency:        "USD",
-		Customer: Customer{
+		Customer: CustomerInput{
 			ID:       "cus_23901",
 			Email:    "samira@example.com",
 			FullName: "Samira Costa",
 		},
-		ShippingAddress: Address{
+		ShippingAddress: AddressInput{
 			Line1:      "55 Market Street",
 			City:       "San Francisco",
 			State:      "CA",
 			PostalCode: "94105",
 			Country:    "US",
 		},
-		Items: []OrderItemRequest{
+		Items: []OrderItemInput{
 			{
 				SKU:      "SKU-CHAIR-BLK",
 				Quantity: 1,
@@ -326,7 +326,7 @@ func validCreateOrderRequest() CreateOrderRequest {
 				},
 			},
 		},
-		PaymentMethod: PaymentMethod{
+		PaymentMethod: PaymentMethodInput{
 			Provider:     "stripe",
 			PaymentToken: "tok_visa_01hzsample",
 		},

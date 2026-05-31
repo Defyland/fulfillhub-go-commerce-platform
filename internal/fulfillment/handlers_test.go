@@ -12,7 +12,7 @@ import (
 func TestWorkerHandlersAdvanceHappyPathAndCompleteOrder(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -101,7 +101,7 @@ func TestHandlerForQueueRejectsUnexpectedEventType(t *testing.T) {
 func TestInventoryHandlerWritesRejectionEventWhenReservationFails(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -149,7 +149,7 @@ func TestInventoryHandlerWritesRejectionEventWhenReservationFails(t *testing.T) 
 func TestInventoryHandlerWritesRejectionEventWhenStockIsInsufficient(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestInventoryHandlerWritesRejectionEventWhenStockIsInsufficient(t *testing.
 func TestPaymentHandlerWritesFailureEventWhenAuthorizationFails(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -242,7 +242,7 @@ func TestPaymentHandlerWritesFailureEventWhenAuthorizationFails(t *testing.T) {
 func TestShipmentHandlerWritesFailureEventWhenProviderFails(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -299,7 +299,7 @@ func TestShipmentHandlerWritesFailureEventWhenProviderFails(t *testing.T) {
 func TestNotificationHandlerQueuesEmailAudit(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -334,7 +334,7 @@ func TestNotificationHandlerQueuesEmailAudit(t *testing.T) {
 func TestNotificationHandlerQueuesFailureEmailAudit(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -369,7 +369,7 @@ func TestNotificationHandlerQueuesFailureEmailAudit(t *testing.T) {
 func TestNotificationHandlerQueuesManualReviewEmailAudit(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -403,7 +403,7 @@ func TestNotificationHandlerQueuesManualReviewEmailAudit(t *testing.T) {
 func TestCancellationHandlerFinalizesOrderAndEmitsCancelledEvent(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -456,7 +456,7 @@ func TestCancellationHandlerFinalizesOrderAndEmitsCancelledEvent(t *testing.T) {
 func TestCancellationHandlerReleasesStockAndVoidsPaymentBeforeShipment(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -517,7 +517,7 @@ func TestCancellationHandlerReleasesStockAndVoidsPaymentBeforeShipment(t *testin
 func TestCancellationHandlerRoutesCreatedShipmentToManualReview(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -600,7 +600,7 @@ func TestCancellationHandlerRoutesCreatedShipmentToManualReview(t *testing.T) {
 func TestOrderFinalizerDoesNotCompleteCancellationPendingOrder(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -667,7 +667,7 @@ func TestOrderFinalizerDoesNotCompleteCancellationPendingOrder(t *testing.T) {
 func TestCompensationHandlerRecordsTargetStatus(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -709,7 +709,7 @@ func TestCompensationHandlerRecordsTargetStatus(t *testing.T) {
 func TestCompensationHandlerReleasesStockAndVoidsPayment(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -848,23 +848,23 @@ func (p insufficientStockProjector) RecordInventoryReserved(context.Context, com
 	return commerce.ErrInsufficientStock
 }
 
-func validCreateOrderRequest() commerce.CreateOrderRequest {
-	return commerce.CreateOrderRequest{
+func validCreateOrderCommand() commerce.CreateOrderCommand {
+	return commerce.CreateOrderCommand{
 		ExternalOrderID: "web-100045",
 		Currency:        "USD",
-		Customer: commerce.Customer{
+		Customer: commerce.CustomerInput{
 			ID:       "cus_23901",
 			Email:    "samira@example.com",
 			FullName: "Samira Costa",
 		},
-		ShippingAddress: commerce.Address{
+		ShippingAddress: commerce.AddressInput{
 			Line1:      "55 Market Street",
 			City:       "San Francisco",
 			State:      "CA",
 			PostalCode: "94105",
 			Country:    "US",
 		},
-		Items: []commerce.OrderItemRequest{
+		Items: []commerce.OrderItemInput{
 			{
 				SKU:      "SKU-CHAIR-BLK",
 				Quantity: 1,
@@ -874,7 +874,7 @@ func validCreateOrderRequest() commerce.CreateOrderRequest {
 				},
 			},
 		},
-		PaymentMethod: commerce.PaymentMethod{
+		PaymentMethod: commerce.PaymentMethodInput{
 			Provider:     "stripe",
 			PaymentToken: "tok_visa_01hzsample",
 		},

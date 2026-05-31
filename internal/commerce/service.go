@@ -47,11 +47,11 @@ func NewService(store Store) *Service {
 	}
 }
 
-func (s *Service) CreateOrder(merchantID, idempotencyKey, correlationID string, req CreateOrderRequest) (*Order, bool, error) {
+func (s *Service) CreateOrder(merchantID, idempotencyKey, correlationID string, req CreateOrderCommand) (*Order, bool, error) {
 	return s.CreateOrderContext(context.Background(), merchantID, idempotencyKey, correlationID, req)
 }
 
-func (s *Service) CreateOrderContext(ctx context.Context, merchantID, idempotencyKey, correlationID string, req CreateOrderRequest) (*Order, bool, error) {
+func (s *Service) CreateOrderContext(ctx context.Context, merchantID, idempotencyKey, correlationID string, req CreateOrderCommand) (*Order, bool, error) {
 	if err := validateCreateOrder(merchantID, idempotencyKey, req); err != nil {
 		return nil, false, err
 	}
@@ -218,7 +218,7 @@ func opaqueReference(prefix, value string) string {
 	return fmt.Sprintf("%s_%s", prefix, hex.EncodeToString(sum[:])[:24])
 }
 
-func addressFingerprint(address Address) string {
+func addressFingerprint(address AddressInput) string {
 	parts := []string{
 		address.Line1,
 		address.Line2,
@@ -230,7 +230,7 @@ func addressFingerprint(address Address) string {
 	return strings.ToLower(strings.Join(parts, "|"))
 }
 
-func validateCreateOrder(merchantID, idempotencyKey string, req CreateOrderRequest) error {
+func validateCreateOrder(merchantID, idempotencyKey string, req CreateOrderCommand) error {
 	var fields []FieldError
 	if strings.TrimSpace(merchantID) == "" {
 		fields = append(fields, FieldError{Field: "merchant_id", Issue: "is required from authentication context"})

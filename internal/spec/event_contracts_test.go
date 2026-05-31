@@ -291,21 +291,21 @@ func lastRuntimeEvent(t testing.TB, service *commerce.Service) commerce.OutboxEv
 	return events[len(events)-1]
 }
 
-func contractOrderRequest() commerce.CreateOrderRequest {
-	return commerce.CreateOrderRequest{
+func contractOrderRequest() commerce.CreateOrderCommand {
+	return commerce.CreateOrderCommand{
 		ExternalOrderID: "web-contract-1",
 		Currency:        "USD",
-		Customer: commerce.Customer{
+		Customer: commerce.CustomerInput{
 			Email: "samira@example.com",
 		},
-		ShippingAddress: commerce.Address{
+		ShippingAddress: commerce.AddressInput{
 			Line1:      "55 Market Street",
 			City:       "San Francisco",
 			State:      "CA",
 			PostalCode: "94105",
 			Country:    "US",
 		},
-		Items: []commerce.OrderItemRequest{{
+		Items: []commerce.OrderItemInput{{
 			SKU:      "SKU-CHAIR-BLK",
 			Quantity: 1,
 			UnitPrice: commerce.Money{
@@ -313,7 +313,7 @@ func contractOrderRequest() commerce.CreateOrderRequest {
 				Currency: "USD",
 			},
 		}},
-		PaymentMethod: commerce.PaymentMethod{
+		PaymentMethod: commerce.PaymentMethodInput{
 			Provider:     "stripe",
 			PaymentToken: "tok_visa_01hzsample",
 		},

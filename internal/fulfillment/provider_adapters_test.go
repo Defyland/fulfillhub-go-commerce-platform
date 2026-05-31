@@ -12,7 +12,7 @@ import (
 func TestProviderPaymentAuthorizerUsesPersistedCredentialReference(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}
@@ -36,7 +36,7 @@ func TestProviderPaymentAuthorizerUsesPersistedCredentialReference(t *testing.T)
 func TestProviderShipmentCreatorUsesPersistedAddressReference(t *testing.T) {
 	store := commerce.NewMemoryStore()
 	service := commerce.NewService(store)
-	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderCommand())
 	if err != nil {
 		t.Fatalf("CreateOrder returned error: %v", err)
 	}

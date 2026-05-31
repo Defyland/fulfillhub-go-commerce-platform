@@ -26,24 +26,39 @@ type Address struct {
 	Country    string `json:"country"`
 }
 
-type OrderItemRequest struct {
-	SKU       string `json:"sku"`
-	Quantity  int    `json:"quantity"`
-	UnitPrice Money  `json:"unit_price"`
+type CustomerInput struct {
+	ID       string
+	Email    string
+	FullName string
 }
 
-type PaymentMethod struct {
-	Provider     string `json:"provider"`
-	PaymentToken string `json:"payment_token"`
+type AddressInput struct {
+	Line1      string
+	Line2      string
+	City       string
+	State      string
+	PostalCode string
+	Country    string
 }
 
-type CreateOrderRequest struct {
-	ExternalOrderID string             `json:"external_order_id"`
-	Currency        string             `json:"currency"`
-	Customer        Customer           `json:"customer"`
-	ShippingAddress Address            `json:"shipping_address"`
-	Items           []OrderItemRequest `json:"items"`
-	PaymentMethod   PaymentMethod      `json:"payment_method"`
+type OrderItemInput struct {
+	SKU       string
+	Quantity  int
+	UnitPrice Money
+}
+
+type PaymentMethodInput struct {
+	Provider     string
+	PaymentToken string
+}
+
+type CreateOrderCommand struct {
+	ExternalOrderID string
+	Currency        string
+	Customer        CustomerInput
+	ShippingAddress AddressInput
+	Items           []OrderItemInput
+	PaymentMethod   PaymentMethodInput
 }
 
 type OrderStatus string
