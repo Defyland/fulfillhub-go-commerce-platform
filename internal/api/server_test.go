@@ -410,6 +410,51 @@ func TestCreateOrderRejectsValidationFailure(t *testing.T) {
 	}
 }
 
+func TestCreateOrderRejectsUnknownJSONFields(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{
+			name: "top-level",
+			mutate: func(payload map[string]any) {
+				payload["unexpected"] = true
+			},
+		},
+		{
+			name: "nested",
+			mutate: func(payload map[string]any) {
+				customer := payload["customer"].(map[string]any)
+				customer["nickname"] = "Sam"
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := testServer()
+			var payload map[string]any
+			if err := json.Unmarshal(validOrderJSON(t), &payload); err != nil {
+				t.Fatalf("decode valid payload: %v", err)
+			}
+			tc.mutate(payload)
+			raw, err := json.Marshal(payload)
+			if err != nil {
+				t.Fatalf("marshal payload: %v", err)
+			}
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/orders", bytes.NewReader(raw))
+			req.Header.Set("X-API-Key", "fh_live_merchant_demo")
+			req.Header.Set("Idempotency-Key", "idem-key-0001")
+
+			server.ServeHTTP(rec, req)
+
+			assertStatus(t, rec, http.StatusBadRequest)
+			if !strings.Contains(rec.Body.String(), "invalid_json") {
+				t.Fatalf("unknown-field response = %s, want invalid_json", rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestCreateOrderAppliesRateLimit(t *testing.T) {
 	server := newTestServerWithOptions(commerce.NewService(commerce.NewMemoryStore()), Options{
 		RateLimiter: &fixedLimiter{allowed: false},
@@ -480,6 +525,31 @@ func TestStaticOpsTokenRequiresExplicitLocalOption(t *testing.T) {
 	assertStatus(t, rec, http.StatusUnauthorized)
 }
 
+func TestOrderRoutesRejectMalformedResourcePaths(t *testing.T) {
+	server := testServer()
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+
+	for _, tc := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/api/v1/orders/"},
+		{method: http.MethodGet, path: "/api/v1/orders/" + orderID + "/events"},
+		{method: http.MethodPost, path: "/api/v1/orders//cancel"},
+		{method: http.MethodPost, path: "/api/v1/orders/" + orderID + "/cancel/extra"},
+	} {
+		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`))
+			req.Header.Set("X-API-Key", "fh_live_merchant_demo")
+
+			server.ServeHTTP(rec, req)
+
+			assertStatus(t, rec, http.StatusNotFound)
+		})
+	}
+}
+
 func TestGetShipmentReturnsMerchantShipment(t *testing.T) {
 	server, store, service := testServerWithStore()
 	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
@@ -548,6 +618,27 @@ func TestGetShipmentRequiresAuthentication(t *testing.T) {
 	server.ServeHTTP(rec, req)
 
 	assertStatus(t, rec, http.StatusUnauthorized)
+}
+
+func TestShipmentRoutesRejectMalformedResourcePaths(t *testing.T) {
+	server, store, service := testServerWithStore()
+	orderID := createOrder(t, server, "fh_live_merchant_demo", "idem-key-0001")
+	shipmentID := recordShipment(t, store, service, orderID)
+
+	for _, path := range []string{
+		"/api/v1/shipments/",
+		"/api/v1/shipments/" + shipmentID + "/events",
+	} {
+		t.Run(path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("X-API-Key", "fh_live_merchant_demo")
+
+			server.ServeHTTP(rec, req)
+
+			assertStatus(t, rec, http.StatusNotFound)
+		})
+	}
 }
 
 func TestOpsJWTCanReadMerchantOrder(t *testing.T) {

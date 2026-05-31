@@ -543,6 +543,7 @@ components:
           format: date-time
     CreateOrderRequest:
       type: object
+      additionalProperties: false
       required:
         - external_order_id
         - currency
@@ -571,6 +572,7 @@ components:
           $ref: '#/components/schemas/PaymentMethod'
     CreateOrderItem:
       type: object
+      additionalProperties: false
       required:
         - sku
         - quantity
@@ -585,6 +587,7 @@ components:
           $ref: '#/components/schemas/Money'
     PaymentMethod:
       type: object
+      additionalProperties: false
       required:
         - provider
         - payment_token
@@ -596,6 +599,7 @@ components:
           type: string
     Customer:
       type: object
+      additionalProperties: false
       required:
         - id
         - email
@@ -610,6 +614,7 @@ components:
           type: string
     Address:
       type: object
+      additionalProperties: false
       required:
         - line_1
         - city
@@ -815,6 +820,7 @@ components:
           type: string
     CancelOrderRequest:
       type: object
+      additionalProperties: false
       required:
         - reason
         - requested_by
@@ -827,6 +833,7 @@ components:
             - merchant_error
         requested_by:
           type: object
+          additionalProperties: false
           required:
             - type
             - id
@@ -841,6 +848,7 @@ components:
               type: string
     Money:
       type: object
+      additionalProperties: false
       required:
         - amount
         - currency

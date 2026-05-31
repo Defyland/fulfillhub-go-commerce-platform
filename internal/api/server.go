@@ -274,9 +274,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
 		s.createOrder(w, r, requestID, correlationID)
 	case strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
-		s.orderRoute(w, r, requestID, correlationID)
+		orderID, action, ok := orderRouteMatch(r.URL.Path)
+		if !ok {
+			s.writeError(w, http.StatusNotFound, "not_found", "Route not found.", false, nil, requestID, correlationID)
+			return
+		}
+		s.orderRoute(w, r, orderID, action, requestID, correlationID)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/shipments/"):
-		shipmentID := strings.TrimPrefix(r.URL.Path, "/api/v1/shipments/")
+		shipmentID, ok := shipmentRouteMatch(r.URL.Path)
+		if !ok {
+			s.writeError(w, http.StatusNotFound, "not_found", "Route not found.", false, nil, requestID, correlationID)
+			return
+		}
 		s.getShipment(w, r, shipmentID, requestID, correlationID)
 	default:
 		s.writeError(w, http.StatusNotFound, "not_found", "Route not found.", false, nil, requestID, correlationID)
@@ -342,14 +351,12 @@ func (s *Server) allowWrite(w http.ResponseWriter, r *http.Request, merchantID, 
 	return true
 }
 
-func (s *Server) orderRoute(w http.ResponseWriter, r *http.Request, requestID, correlationID string) {
-	if strings.HasSuffix(r.URL.Path, "/cancel") && r.Method == http.MethodPost {
-		orderID := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/v1/orders/"), "/cancel")
+func (s *Server) orderRoute(w http.ResponseWriter, r *http.Request, orderID, action, requestID, correlationID string) {
+	if action == "cancel" && r.Method == http.MethodPost {
 		s.cancelOrder(w, r, orderID, requestID, correlationID)
 		return
 	}
-	if r.Method == http.MethodGet {
-		orderID := strings.TrimPrefix(r.URL.Path, "/api/v1/orders/")
+	if action == "" && r.Method == http.MethodGet {
 		s.getOrder(w, r, orderID, requestID, correlationID)
 		return
 	}
@@ -503,6 +510,7 @@ func (s *Server) authenticate(w http.ResponseWriter, r *http.Request, requestID,
 func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, dest any, requestID, correlationID string) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, s.maxBodyBytes)
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(dest); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -888,15 +896,56 @@ func routeSpanName(r *http.Request) string {
 		return "GET /metrics"
 	case r.Method == http.MethodPost && r.URL.Path == "/api/v1/orders":
 		return "POST /api/v1/orders"
-	case strings.HasPrefix(r.URL.Path, "/api/v1/orders/") && strings.HasSuffix(r.URL.Path, "/cancel"):
-		return r.Method + " /api/v1/orders/{orderId}/cancel"
 	case strings.HasPrefix(r.URL.Path, "/api/v1/orders/"):
+		_, action, ok := orderRouteMatch(r.URL.Path)
+		if !ok {
+			return r.Method + " /api/v1/orders/{invalid}"
+		}
+		if action == "cancel" {
+			return r.Method + " /api/v1/orders/{orderId}/cancel"
+		}
 		return r.Method + " /api/v1/orders/{orderId}"
 	case strings.HasPrefix(r.URL.Path, "/api/v1/shipments/"):
+		if _, ok := shipmentRouteMatch(r.URL.Path); !ok {
+			return r.Method + " /api/v1/shipments/{invalid}"
+		}
 		return r.Method + " /api/v1/shipments/{shipmentId}"
 	default:
 		return r.Method + " " + r.URL.Path
 	}
+}
+
+func orderRouteMatch(path string) (orderID, action string, ok bool) {
+	rest, ok := strings.CutPrefix(path, "/api/v1/orders/")
+	if !ok || rest == "" {
+		return "", "", false
+	}
+	parts := strings.Split(rest, "/")
+	switch len(parts) {
+	case 1:
+		if parts[0] == "" {
+			return "", "", false
+		}
+		return parts[0], "", true
+	case 2:
+		if parts[0] == "" || parts[1] != "cancel" {
+			return "", "", false
+		}
+		return parts[0], "cancel", true
+	default:
+		return "", "", false
+	}
+}
+
+func shipmentRouteMatch(path string) (shipmentID string, ok bool) {
+	rest, ok := strings.CutPrefix(path, "/api/v1/shipments/")
+	if !ok || rest == "" {
+		return "", false
+	}
+	if strings.Contains(rest, "/") {
+		return "", false
+	}
+	return rest, true
 }
 
 func recordActor(ctx context.Context, act actor) {

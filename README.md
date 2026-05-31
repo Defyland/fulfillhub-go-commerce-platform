@@ -216,7 +216,8 @@ runtime baseline.
 - Operations-only capabilities use JWT bearer tokens with role, expiry, issuer, audience, and rotation controls
 - The local static `Bearer ops-token` fallback is accepted only when `ALLOW_LOCAL_OPS_TOKEN=true` and no `OPS_JWT_SECRET` is configured
 - Tenant isolation is enforced on every read and write path via `merchant_id`
-- Input validation rejects malformed SKU, quantity, address, and idempotency payloads
+- Input validation rejects unknown JSON fields plus malformed SKU, quantity,
+  address, and idempotency payloads
 - Rate limiting protects order creation and lookup endpoints
 - Secrets are expected to come from environment variables or secret managers, never committed files
 - Audit logs record privileged actions, manual replays, and cancellation reasons
