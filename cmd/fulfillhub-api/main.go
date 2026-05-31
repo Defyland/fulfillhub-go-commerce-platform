@@ -2,12 +2,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"net/http/pprof"
 	"os"
+	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/Defyland/fulfillhub-go-commerce-platform/internal/api"
@@ -20,6 +26,9 @@ import (
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	shutdownTracing, err := observability.ConfigureTracing(context.Background(), "fulfillhub-api", os.Getenv, logger)
 	if err != nil {
 		fatal(logger, "configure tracing", err)
@@ -142,10 +151,33 @@ func main() {
 	service := commerce.NewService(store)
 	handler := api.NewServerWithOptions(service, options)
 	server := newHTTPServer(addr, handler)
+	pprofServer, err := startPprofServer(os.Getenv, logger)
+	if err != nil {
+		fatal(logger, "start pprof server", err)
+	}
 
-	logger.Info("starting fulfillhub api", "addr", addr)
-	if err := server.ListenAndServe(); err != nil {
-		fatal(logger, "api server stopped", err)
+	logger.Info("starting fulfillhub api",
+		"addr", addr,
+		"gomaxprocs", runtime.GOMAXPROCS(0),
+		"num_cpu", runtime.NumCPU(),
+	)
+	errCh := make(chan error, 1)
+	go func() {
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+		close(errCh)
+	}()
+
+	select {
+	case <-ctx.Done():
+		logger.Info("shutting down fulfillhub api")
+		shutdownHTTPServer(server, logger, "api")
+		shutdownHTTPServer(pprofServer, logger, "pprof")
+	case err := <-errCh:
+		if err != nil {
+			fatal(logger, "api server stopped", err)
+		}
 	}
 }
 
@@ -157,6 +189,60 @@ func newHTTPServer(addr string, handler http.Handler) *http.Server {
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      15 * time.Second,
 		IdleTimeout:       60 * time.Second,
+	}
+}
+
+func startPprofServer(getenv func(string) string, logger *slog.Logger) (*http.Server, error) {
+	enabled, err := boolEnv(getenv, "ENABLE_PPROF")
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, nil
+	}
+	addr := strings.TrimSpace(getenv("PPROF_ADDR"))
+	if addr == "" {
+		addr = "127.0.0.1:6060"
+	}
+	server := newPprofServer(addr)
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		return nil, fmt.Errorf("listen on pprof addr %s: %w", addr, err)
+	}
+	logger.Info("starting pprof server", "addr", addr)
+	go func() {
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("pprof server stopped", "error", err)
+		}
+	}()
+	return server, nil
+}
+
+func newPprofServer(addr string) *http.Server {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+	return &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+}
+
+func shutdownHTTPServer(server *http.Server, logger *slog.Logger, name string) {
+	if server == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctx); err != nil {
+		logger.Error("shutdown http server", "name", name, "error", err)
 	}
 }
 

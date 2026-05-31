@@ -1,7 +1,10 @@
 package main
 
 import (
+	"io"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -136,4 +139,49 @@ func TestHTTPServerUsesProductionTimeouts(t *testing.T) {
 	if server.ReadTimeout == 0 || server.WriteTimeout == 0 || server.IdleTimeout == 0 {
 		t.Fatalf("server timeouts must be configured: %+v", server)
 	}
+}
+
+func TestPprofServerDisabledByDefault(t *testing.T) {
+	server, err := startPprofServer(func(string) string { return "" }, discardLogger())
+	if err != nil {
+		t.Fatalf("startPprofServer returned error: %v", err)
+	}
+	if server != nil {
+		t.Fatalf("pprof server = %+v, want nil when ENABLE_PPROF is unset", server)
+	}
+}
+
+func TestPprofServerRejectsInvalidBoolean(t *testing.T) {
+	_, err := startPprofServer(func(key string) string {
+		if key == "ENABLE_PPROF" {
+			return "maybe"
+		}
+		return ""
+	}, discardLogger())
+	if err == nil {
+		t.Fatal("startPprofServer must reject invalid ENABLE_PPROF")
+	}
+}
+
+func TestPprofServerUsesProductionTimeoutsAndHandlers(t *testing.T) {
+	server := newPprofServer("127.0.0.1:0")
+
+	if server.ReadHeaderTimeout < 5*time.Second {
+		t.Fatalf("ReadHeaderTimeout = %s, want at least 5s", server.ReadHeaderTimeout)
+	}
+	if server.ReadTimeout == 0 || server.WriteTimeout == 0 || server.IdleTimeout == 0 {
+		t.Fatalf("pprof server timeouts must be configured: %+v", server)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/debug/pprof/", nil)
+
+	server.Handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("pprof index status = %d, want 200", rec.Code)
+	}
+}
+
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }

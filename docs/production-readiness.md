@@ -16,6 +16,7 @@ from drifting.
 | Deploy and rollback | Kubernetes blueprint in `deployments/kubernetes/base`, controlled migration binary, rollout/rollback runbook | Real cluster, ingress, registry, image tag promotion, managed dependencies |
 | Secrets | ExternalSecret blueprint, runtime env contract, rotation documentation | Secrets Manager, Vault, or equivalent KMS-backed provider |
 | Providers | Signed webhook verifier, opaque payment/address references, adapter boundary tests | Real PSP/carrier credentials, webhook endpoint wiring, reconciliation jobs |
+| Internal contracts | Versioned Protobuf contracts, gRPC/REST error mapping, contract tests | Generated stubs and gRPC server only when an internal process boundary exists |
 | Observability | Prometheus metrics, Grafana dashboard, alert rules, SLO runbooks | Production Prometheus/Grafana/Alertmanager and paging integration |
 | Data | PostgreSQL migrations with rollback notes, backup/restore policy | Managed PostgreSQL PITR, tested restore target, retention jobs |
 | Supply chain | SBOM, Trivy scans, Gitleaks, Docker build validation | Signed release images, provenance attestation, branch protection |
@@ -34,7 +35,9 @@ Every production candidate should satisfy these gates before promotion:
 6. `/readyz` is green after rollout for API pods.
 7. Prometheus can scrape `/metrics` using `METRICS_BEARER_TOKEN`.
 8. Outbox age, queue depth, DLQ depth, and order failure ratio remain below alert thresholds during canary.
-9. Rollback command and previous image tag are known before rollout starts.
+9. Optional pprof is disabled unless a time-bounded operator debug session
+   explicitly enables it on a protected loopback or private endpoint.
+10. Rollback command and previous image tag are known before rollout starts.
 
 ## Deployment model
 
@@ -49,6 +52,10 @@ The blueprint intentionally excludes managed PostgreSQL, RabbitMQ, Redis, ingres
 controller, DNS, TLS, and cloud IAM because those vary by platform. The runtime
 contract is carried by `ConfigMap` and `ExternalSecret` resources, not committed
 literal secrets.
+
+Runtime process behavior is documented in [docs/runtime.md](./runtime.md).
+Kubernetes environment responsibilities are documented in
+[docs/kubernetes.md](./kubernetes.md).
 
 ## Migration policy
 
@@ -100,6 +107,8 @@ when attaching the repository to a real environment:
 
 - Cloud-specific Terraform or Pulumi for VPC, database, broker, Redis, IAM, DNS, TLS, and observability backends.
 - Real PSP and carrier adapters with sandbox contract tests.
+- Generated Protobuf stubs and a gRPC runtime only when the monolith is split by
+  an actual internal process boundary.
 - Webhook HTTP endpoints and reconciliation workers for the selected providers.
 - Signed image publishing with organization-controlled keyless identity.
 - PITR restore drill against a real managed PostgreSQL snapshot.

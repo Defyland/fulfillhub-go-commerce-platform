@@ -460,11 +460,12 @@ BASE_URL='http://localhost:8080' k6 run benchmarks/k6/spike.js
 The GitHub Actions workflow at `.github/workflows/phase0-quality.yml` runs repository validation, production-readiness validation, `gofmt`, `go vet`, tests, PostgreSQL integration tests, benchmark smoke, markdown linting, OpenAPI validation, secret scanning, supply-chain scans, and Docker build validation.
 
 Production deployment and operations artifacts are captured in
-[docs/production-readiness.md](./docs/production-readiness.md) and
-[deployments/kubernetes/base](./deployments/kubernetes/base). The manifests are
-a blueprint for real environments: image tags, managed PostgreSQL/RabbitMQ/Redis
-endpoints, External Secrets provider, ingress, and cloud IAM bindings must be
-supplied by the target platform.
+[docs/production-readiness.md](./docs/production-readiness.md),
+[docs/runtime.md](./docs/runtime.md), [docs/kubernetes.md](./docs/kubernetes.md),
+and [deployments/kubernetes/base](./deployments/kubernetes/base). The manifests
+are a blueprint for real environments: image tags, managed
+PostgreSQL/RabbitMQ/Redis endpoints, External Secrets provider, ingress, and
+cloud IAM bindings must be supplied by the target platform.
 
 Operational launch controls are documented in the deployment, alert, data
 protection, secrets, and supply-chain runbooks under `docs/runbooks` and

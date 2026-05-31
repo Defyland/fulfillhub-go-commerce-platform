@@ -95,6 +95,7 @@ internal/observability/tracing.go
 internal/observability/tracing_test.go
 internal/postgres/migrations.go
 internal/postgres/migrations_test.go
+internal/postgres/pool_test.go
 internal/postgres/store.go
 internal/postgres/migrations/001_init.sql
 internal/postgres/migrations/002_audit_details.sql
@@ -125,6 +126,8 @@ proto/payments.proto
 proto/shipping.proto
 proto/saga.proto
 docs/production-readiness.md
+docs/runtime.md
+docs/kubernetes.md
 docs/engineering-baseline.md
 docs/api/request-response-examples.md
 docs/api/error-format.md

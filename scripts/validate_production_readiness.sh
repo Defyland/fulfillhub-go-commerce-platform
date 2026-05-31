@@ -7,6 +7,8 @@ cd "$REPO_ROOT"
 
 required_files="
 docs/production-readiness.md
+docs/runtime.md
+docs/kubernetes.md
 docs/runbooks/deployment-rollback.md
 docs/runbooks/slo-alert-response.md
 docs/runbooks/data-protection.md
