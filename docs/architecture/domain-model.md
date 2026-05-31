@@ -27,7 +27,7 @@ pending_fulfillment
 
 Compensation paths:
 pending_fulfillment -> failed
-inventory_reserved -> cancelled
+inventory_reserved -> cancellation_pending -> cancelled
 payment_authorized -> cancellation_pending -> cancelled
 shipment_created -> cancellation_pending -> manual_review
 ```
@@ -37,6 +37,7 @@ shipment_created -> cancellation_pending -> manual_review
 - Orders own customer-visible status and the orchestration timeline.
 - Inventory owns stock truth and reservation semantics. PostgreSQL reservations lock and mutate `inventory_items` in the same transaction that records the reservation event.
 - Payments own provider correlation and authorization status.
+- Cancellation finalization before shipment releases reserved stock and voids authorized payment projections in the same transaction that emits `order.cancelled`.
 - Shipments own carrier-facing identifiers and delivery timeline.
 - Notifications never own source-of-truth order state; they consume events only.
 

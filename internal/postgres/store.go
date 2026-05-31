@@ -572,6 +572,65 @@ func (s *Store) RecordShipmentFailed(ctx context.Context, source commerce.Outbox
 	return nil
 }
 
+func (s *Store) RecordOrderCancelled(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) (err error) {
+	ctx = contextOrBackground(ctx)
+	ctx, span := postgresTracer().Start(ctx, "postgres.record_order_cancelled", trace.WithAttributes(
+		attribute.String("db.system.name", "postgresql"),
+		attribute.String("fulfillhub.order_id", source.OrderID),
+		attribute.String("fulfillhub.merchant_id", source.MerchantID),
+		attribute.String("fulfillhub.source_event_type", source.EventType),
+	))
+	defer finishSpan(span, &err, "record order cancellation")
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin record order cancellation: %w", err)
+	}
+	defer rollback(tx)
+
+	currentStatus, err := lockOrderStatusForUpdate(ctx, tx, source.OrderID)
+	if err != nil {
+		return err
+	}
+	if err := commerce.ValidateOrderTransition(currentStatus, commerce.StatusCancelled); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET status = $2,
+			updated_at = $3,
+			version = version + 1
+		WHERE order_id = $1
+	`, source.OrderID, commerce.StatusCancelled, next.OccurredAt)
+	if err != nil {
+		return fmt.Errorf("update cancelled order status: %w", err)
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("inspect cancelled order rows: %w", err)
+	}
+	if rows == 0 {
+		return commerce.ErrNotFound
+	}
+	if err := releaseReservedStock(ctx, tx, source.OrderID, next.OccurredAt); err != nil {
+		return err
+	}
+	if err := voidAuthorizedPayment(ctx, tx, source.OrderID, next.OccurredAt); err != nil {
+		return err
+	}
+	next.Payload = orderStatusEventPayload(commerce.StatusCancelled, next.OccurredAt, audit)
+	if err := insertOutboxEvent(ctx, tx, next); err != nil {
+		return err
+	}
+	if err := insertAuditLog(ctx, tx, audit); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit record order cancellation: %w", err)
+	}
+	return nil
+}
+
 func (s *Store) RecordNotificationQueued(ctx context.Context, source commerce.OutboxEvent, audit commerce.AuditLog) (err error) {
 	ctx = contextOrBackground(ctx)
 	ctx, span := postgresTracer().Start(ctx, "postgres.record_notification_queued", trace.WithAttributes(
@@ -682,45 +741,59 @@ func (s *Store) RecordCompensation(ctx context.Context, source commerce.OutboxEv
 func applyCompensationEffects(ctx context.Context, tx *sql.Tx, source commerce.OutboxEvent, at time.Time) error {
 	switch source.EventType {
 	case "payment.failed", "shipment.failed":
-		if err := releaseInventoryItems(ctx, tx, source.OrderID, at); err != nil {
+		if err := releaseReservedStock(ctx, tx, source.OrderID, at); err != nil {
 			return err
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE stock_reservations
-			SET status = 'released',
-				released_at = $2
-			WHERE order_id = $1
-				AND status <> 'released'
-		`, source.OrderID, at); err != nil {
-			return fmt.Errorf("release compensated stock reservations: %w", err)
-		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE order_items
-			SET reservation_status = 'released'
-			WHERE order_id = $1
-				AND reservation_status = 'reserved'
-		`, source.OrderID); err != nil {
-			return fmt.Errorf("release compensated order items: %w", err)
 		}
 	}
 	if source.EventType == "shipment.failed" {
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE payment_authorizations
-			SET status = 'voided',
-				voided_at = $2
-			WHERE order_id = $1
-				AND status = 'authorized'
-		`, source.OrderID, at); err != nil {
-			return fmt.Errorf("void compensated payment authorization: %w", err)
+		if err := voidAuthorizedPayment(ctx, tx, source.OrderID, at); err != nil {
+			return err
 		}
-		if _, err := tx.ExecContext(ctx, `
-			UPDATE orders
-			SET payment_status = 'voided'
-			WHERE order_id = $1
-				AND payment_status = 'authorized'
-		`, source.OrderID); err != nil {
-			return fmt.Errorf("void compensated order payment: %w", err)
-		}
+	}
+	return nil
+}
+
+func releaseReservedStock(ctx context.Context, tx *sql.Tx, orderID string, at time.Time) error {
+	if err := releaseInventoryItems(ctx, tx, orderID, at); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE stock_reservations
+		SET status = 'released',
+			released_at = $2
+		WHERE order_id = $1
+			AND status <> 'released'
+	`, orderID, at); err != nil {
+		return fmt.Errorf("release stock reservations: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE order_items
+		SET reservation_status = 'released'
+		WHERE order_id = $1
+			AND reservation_status = 'reserved'
+	`, orderID); err != nil {
+		return fmt.Errorf("release order items: %w", err)
+	}
+	return nil
+}
+
+func voidAuthorizedPayment(ctx context.Context, tx *sql.Tx, orderID string, at time.Time) error {
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE payment_authorizations
+		SET status = 'voided',
+			voided_at = $2
+		WHERE order_id = $1
+			AND status = 'authorized'
+	`, orderID, at); err != nil {
+		return fmt.Errorf("void payment authorization: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE orders
+		SET payment_status = 'voided'
+		WHERE order_id = $1
+			AND payment_status = 'authorized'
+	`, orderID); err != nil {
+		return fmt.Errorf("void order payment: %w", err)
 	}
 	return nil
 }

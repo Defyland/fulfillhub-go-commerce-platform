@@ -59,8 +59,10 @@ The current cancellation worker finalizes accepted cancellation requests in one
 transaction. Pre-shipment orders are cancelled automatically:
 
 1. update `orders.status` to `cancelled`
-2. insert `outbox_events` row for `order.cancelled`
-3. insert `audit_logs` row for `order.cancelled`
+2. release any `stock_reservations` and restore `inventory_items`
+3. void any authorized `payment_authorizations` projection
+4. insert `outbox_events` row for `order.cancelled`
+5. insert `audit_logs` row for `order.cancelled`
 
 Orders that already have a carrier shipment projection are not cancelled
 automatically:

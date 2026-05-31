@@ -697,6 +697,140 @@ func TestPostgresStoreIntegration(t *testing.T) {
 	if voided.Payment == nil || voided.Payment.Status != "voided" {
 		t.Fatalf("voided payment = %+v, want voided", voided.Payment)
 	}
+	cancelEffectsOrder := postgresTestOrder(
+		"ord_pg_cancel_effects_"+strings.ReplaceAll(t.Name(), "/", "_"),
+		order.MerchantID,
+		"external_pg_cancel_effects_"+strings.ReplaceAll(t.Name(), "/", "_"),
+		"SKU-LAMP-WHT",
+		now,
+	)
+	cancelEffectsCreated := commerce.OutboxEvent{
+		MessageID:     "msg_pg_cancel_effects_created_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: "cor_pg_cancel_effects",
+		CausationID:   "msg_pg_cancel_effects_created_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		EventType:     "order.created",
+		OrderID:       cancelEffectsOrder.OrderID,
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OccurredAt:    now.Add(11*time.Second + 250*time.Millisecond),
+	}
+	if _, _, err := store.InsertOrder(ctx, cancelEffectsOrder.MerchantID, "idem_pg_cancel_effects_"+strings.ReplaceAll(t.Name(), "/", "_"), cancelEffectsOrder, cancelEffectsCreated, commerce.AuditLog{
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OrderID:       cancelEffectsOrder.OrderID,
+		ActorType:     "merchant",
+		ActorID:       cancelEffectsOrder.MerchantID,
+		Action:        "order.create",
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CreatedAt:     cancelEffectsCreated.OccurredAt,
+	}); err != nil {
+		t.Fatalf("insert cancellation-effects order: %v", err)
+	}
+	cancelEffectsInventory := commerce.OutboxEvent{
+		MessageID:     "msg_pg_cancel_effects_inventory_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CausationID:   cancelEffectsCreated.MessageID,
+		EventType:     "inventory.reserved",
+		OrderID:       cancelEffectsOrder.OrderID,
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OccurredAt:    now.Add(11*time.Second + 500*time.Millisecond),
+	}
+	if err := store.RecordInventoryReserved(ctx, cancelEffectsCreated, cancelEffectsInventory, commerce.AuditLog{
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OrderID:       cancelEffectsOrder.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "inventory.reserved",
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CreatedAt:     cancelEffectsInventory.OccurredAt,
+	}); err != nil {
+		t.Fatalf("record cancellation-effects inventory reserved: %v", err)
+	}
+	cancelEffectsPayment := commerce.OutboxEvent{
+		MessageID:     "msg_pg_cancel_effects_payment_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CausationID:   cancelEffectsInventory.MessageID,
+		EventType:     "payment.authorized",
+		OrderID:       cancelEffectsOrder.OrderID,
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OccurredAt:    now.Add(11*time.Second + 750*time.Millisecond),
+	}
+	if err := store.RecordPaymentAuthorized(ctx, cancelEffectsInventory, cancelEffectsPayment, commerce.Payment{
+		Provider:        "stripe",
+		Status:          "authorized",
+		AuthorizationID: "pay_pg_cancel_effects_" + strings.ReplaceAll(t.Name(), "/", "_"),
+	}, commerce.AuditLog{
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OrderID:       cancelEffectsOrder.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "payment.authorized",
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CreatedAt:     cancelEffectsPayment.OccurredAt,
+	}); err != nil {
+		t.Fatalf("record cancellation-effects payment authorized: %v", err)
+	}
+	cancelEffectsRequested := commerce.OutboxEvent{
+		MessageID:     "msg_pg_cancel_effects_requested_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CausationID:   cancelEffectsPayment.MessageID,
+		EventType:     "order.cancel_requested",
+		OrderID:       cancelEffectsOrder.OrderID,
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OccurredAt:    now.Add(12 * time.Second),
+	}
+	if _, err := store.UpdateOrderStatus(ctx, cancelEffectsOrder.OrderID, commerce.StatusCancellationPending, cancelEffectsRequested.OccurredAt, cancelEffectsRequested, commerce.AuditLog{
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OrderID:       cancelEffectsOrder.OrderID,
+		ActorType:     "merchant_user",
+		ActorID:       "usr_cancel_pg_test",
+		Action:        "order.cancel_requested",
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CreatedAt:     cancelEffectsRequested.OccurredAt,
+		Details: map[string]string{
+			"reason": "customer_requested",
+		},
+	}); err != nil {
+		t.Fatalf("record cancellation-effects request: %v", err)
+	}
+	cancelEffectsFinal := commerce.OutboxEvent{
+		MessageID:     "msg_pg_cancel_effects_final_" + strings.ReplaceAll(t.Name(), "/", "_"),
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CausationID:   cancelEffectsRequested.MessageID,
+		EventType:     "order.cancelled",
+		OrderID:       cancelEffectsOrder.OrderID,
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OccurredAt:    now.Add(12*time.Second + 500*time.Millisecond),
+	}
+	if err := store.RecordOrderCancelled(ctx, cancelEffectsRequested, cancelEffectsFinal, commerce.AuditLog{
+		MerchantID:    cancelEffectsOrder.MerchantID,
+		OrderID:       cancelEffectsOrder.OrderID,
+		ActorType:     "system",
+		ActorID:       "fulfillment-worker",
+		Action:        "order.cancelled",
+		CorrelationID: cancelEffectsCreated.CorrelationID,
+		CreatedAt:     cancelEffectsFinal.OccurredAt,
+		Details: map[string]string{
+			"source_message_id": cancelEffectsRequested.MessageID,
+			"source_event_type": cancelEffectsRequested.EventType,
+			"stock_release":     "requested",
+			"payment_void":      "requested",
+		},
+	}); err != nil {
+		t.Fatalf("record order cancelled effects: %v", err)
+	}
+	cancelledWithEffects, err := store.GetOrder(ctx, cancelEffectsOrder.OrderID)
+	if err != nil {
+		t.Fatalf("get cancellation-effects order: %v", err)
+	}
+	if cancelledWithEffects.Status != commerce.StatusCancelled {
+		t.Fatalf("cancelled order status = %q, want cancelled", cancelledWithEffects.Status)
+	}
+	if cancelledWithEffects.Items[0].ReservationStatus != "released" {
+		t.Fatalf("cancelled reservation status = %q, want released", cancelledWithEffects.Items[0].ReservationStatus)
+	}
+	if cancelledWithEffects.Payment == nil || cancelledWithEffects.Payment.Status != "voided" {
+		t.Fatalf("cancelled payment = %+v, want voided", cancelledWithEffects.Payment)
+	}
+	assertInventoryQuantities(t, ctx, store, cancelEffectsOrder.MerchantID, "SKU-LAMP-WHT", 2, 0)
 	manualReviewOrder := &commerce.Order{
 		OrderID:         "ord_pg_manual_review_" + strings.ReplaceAll(t.Name(), "/", "_"),
 		MerchantID:      "mer_pg_test",
@@ -936,6 +1070,7 @@ func TestPostgresStoreIntegration(t *testing.T) {
 		"postgres.record_shipment_created",
 		"postgres.get_shipment",
 		"postgres.update_order_status",
+		"postgres.record_order_cancelled",
 		"postgres.record_notification_queued",
 		"postgres.record_compensation",
 	} {

@@ -269,6 +269,33 @@ func (s *MemoryStore) RecordShipmentFailed(_ context.Context, source OutboxEvent
 	return nil
 }
 
+func (s *MemoryStore) RecordOrderCancelled(_ context.Context, source OutboxEvent, next OutboxEvent, audit AuditLog) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	order, ok := s.orders[source.OrderID]
+	if !ok {
+		return ErrNotFound
+	}
+	if err := ValidateOrderTransition(order.Status, StatusCancelled); err != nil {
+		return err
+	}
+	order.Status = StatusCancelled
+	order.UpdatedAt = next.OccurredAt
+	for idx := range order.Items {
+		if order.Items[idx].ReservationStatus == "reserved" {
+			order.Items[idx].ReservationStatus = "released"
+		}
+	}
+	if order.Payment != nil && order.Payment.Status == "authorized" {
+		order.Payment.Status = "voided"
+	}
+	next.Payload = orderStatusEventPayload(StatusCancelled, next.OccurredAt, audit)
+	s.appendOutboxEvent(next)
+	s.auditLogs = append(s.auditLogs, audit)
+	return nil
+}
+
 func (s *MemoryStore) RecordNotificationQueued(_ context.Context, source OutboxEvent, audit AuditLog) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

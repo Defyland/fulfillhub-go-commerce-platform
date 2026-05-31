@@ -115,8 +115,9 @@ FulfillHub treats asynchronous flow as a first-class concern. The current implem
   for compensation and operations visibility
 - Order finalizer consumes shipment creation, durably marks the order `completed`, and writes `order.completed` to the outbox
 - Order cancellation worker consumes `order.cancel_requested`, durably marks
-  pre-shipment orders `cancelled`, and routes orders already handed to shipment
-  into `manual_review` with `order.manual_review_required`
+  pre-shipment orders `cancelled`, releases reserved stock, voids authorized
+  payment projections, and routes orders already handed to shipment into
+  `manual_review` with `order.manual_review_required`
 - Notification worker consumes order completion, cancellation, manual-review,
   or fulfillment failure events and records a durable email notification projection
 - Compensation worker consumes inventory, payment, or shipment failure events and records durable compensation outcomes, stock releases, and payment void projections

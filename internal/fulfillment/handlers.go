@@ -23,6 +23,7 @@ type Projector interface {
 	RecordPaymentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordShipmentCreated(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, shipment commerce.Shipment, audit commerce.AuditLog) error
 	RecordShipmentFailed(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
+	RecordOrderCancelled(ctx context.Context, source commerce.OutboxEvent, next commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordNotificationQueued(ctx context.Context, source commerce.OutboxEvent, audit commerce.AuditLog) error
 	RecordCompensation(ctx context.Context, source commerce.OutboxEvent, status commerce.OrderStatus, audit commerce.AuditLog) error
 }
@@ -351,9 +352,18 @@ func cancelOrder(ctx context.Context, deps Dependencies, event commerce.OutboxEv
 		_, err := deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusManualReview, now, review, audit)
 		return err
 	}
+	if deps.Projector == nil {
+		return fmt.Errorf("fulfillment projector is required")
+	}
 	cancelled := nextEventAt(deps, event, "order.cancelled", now)
-	_, err = deps.Orders.UpdateOrderStatus(ctx, event.OrderID, commerce.StatusCancelled, now, cancelled, systemAudit(event, "order.cancelled", now))
-	return err
+	audit := systemAudit(event, "order.cancelled", now)
+	if hasReservedInventory(order) {
+		audit.Details["stock_release"] = "requested"
+	}
+	if hasAuthorizedPayment(order) {
+		audit.Details["payment_void"] = "requested"
+	}
+	return deps.Projector.RecordOrderCancelled(ctx, event, cancelled, audit)
 }
 
 func requiresManualReview(order *commerce.Order) bool {
@@ -361,6 +371,22 @@ func requiresManualReview(order *commerce.Order) bool {
 		return true
 	}
 	return order.Shipment != nil && order.Shipment.Status != "" && order.Shipment.Status != "failed"
+}
+
+func hasReservedInventory(order *commerce.Order) bool {
+	if order == nil {
+		return false
+	}
+	for _, item := range order.Items {
+		if item.ReservationStatus == "reserved" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasAuthorizedPayment(order *commerce.Order) bool {
+	return order != nil && order.Payment != nil && order.Payment.Status == "authorized"
 }
 
 func validateEvent(event commerce.OutboxEvent, expectedType string) error {

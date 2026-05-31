@@ -85,8 +85,9 @@ defined in [threat-model.md](./threat-model.md).
   failure event.
 - The order finalizer updates the order to `completed` and writes
   `order.completed` through the transactional outbox.
-- The order cancellation worker updates pre-shipment orders to `cancelled` with
-  `order.cancelled`, or routes orders with shipment handoff into `manual_review`
+- The order cancellation worker updates pre-shipment orders to `cancelled`,
+  releases reserved stock, voids authorized payment projections, and writes
+  `order.cancelled`; orders with shipment handoff route into `manual_review`
   with `order.manual_review_required`.
 - The notification worker records durable email queueing projections for order
   completion, cancellation, manual-review, and fulfillment failure events.

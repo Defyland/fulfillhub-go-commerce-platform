@@ -417,8 +417,9 @@ func TestCancellationHandlerFinalizesOrderAndEmitsCancelledEvent(t *testing.T) {
 	ids := []string{"msg_cancelled"}
 	now := time.Date(2026, 5, 29, 13, 30, 0, 0, time.UTC)
 	handler := handlerForTest(t, messaging.OrdersCancelQueue, Dependencies{
-		Orders: store,
-		Clock:  func() time.Time { return now },
+		Projector: store,
+		Orders:    store,
+		Clock:     func() time.Time { return now },
 		NewID: func(string) string {
 			id := ids[0]
 			ids = ids[1:]
@@ -448,6 +449,67 @@ func TestCancellationHandlerFinalizesOrderAndEmitsCancelledEvent(t *testing.T) {
 	last := logs[len(logs)-1]
 	if last.Action != "order.cancelled" {
 		t.Fatalf("last audit action = %q, want order.cancelled", last.Action)
+	}
+}
+
+func TestCancellationHandlerReleasesStockAndVoidsPaymentBeforeShipment(t *testing.T) {
+	store := commerce.NewMemoryStore()
+	service := commerce.NewService(store)
+	order, _, err := service.CreateOrder("mer_demo", "idem-key-0001", "cor_1", validCreateOrderRequest())
+	if err != nil {
+		t.Fatalf("CreateOrder returned error: %v", err)
+	}
+	ids := []string{"msg_inventory", "msg_payment", "pay_authorized", "msg_cancelled"}
+	now := time.Date(2026, 5, 29, 13, 45, 0, 0, time.UTC)
+	deps := Dependencies{
+		Projector: store,
+		Orders:    store,
+		Clock:     func() time.Time { return now },
+		NewID: func(string) string {
+			id := ids[0]
+			ids = ids[1:]
+			return id
+		},
+	}
+	if err := handlerForTest(t, messaging.InventoryReserveQueue, deps).HandleEvent(context.Background(), service.OutboxEvents()[0]); err != nil {
+		t.Fatalf("inventory handler returned error: %v", err)
+	}
+	if err := handlerForTest(t, messaging.PaymentsAuthorizeQueue, deps).HandleEvent(context.Background(), lastOutboxEvent(service)); err != nil {
+		t.Fatalf("payment handler returned error: %v", err)
+	}
+	if _, err := service.CancelOrder(order.OrderID, "cor_cancel", commerce.AuditActor{
+		Type:   "merchant_user",
+		ID:     "usr_93842",
+		Reason: "customer_requested",
+	}); err != nil {
+		t.Fatalf("CancelOrder returned error: %v", err)
+	}
+	cancelRequested := lastOutboxEvent(service)
+
+	if err := handlerForTest(t, messaging.OrdersCancelQueue, deps).HandleEvent(context.Background(), cancelRequested); err != nil {
+		t.Fatalf("cancellation handler returned error: %v", err)
+	}
+
+	cancelled, err := store.GetOrder(context.Background(), order.OrderID)
+	if err != nil {
+		t.Fatalf("GetOrder returned error: %v", err)
+	}
+	if cancelled.Status != commerce.StatusCancelled {
+		t.Fatalf("order status = %q, want cancelled", cancelled.Status)
+	}
+	if cancelled.Items[0].ReservationStatus != "released" {
+		t.Fatalf("reservation status = %q, want released", cancelled.Items[0].ReservationStatus)
+	}
+	if cancelled.Payment == nil || cancelled.Payment.Status != "voided" {
+		t.Fatalf("payment projection = %+v, want voided", cancelled.Payment)
+	}
+	cancelledEvent := lastOutboxEvent(service)
+	if cancelledEvent.EventType != "order.cancelled" {
+		t.Fatalf("last event type = %q, want order.cancelled", cancelledEvent.EventType)
+	}
+	last := service.AuditLogs()[len(service.AuditLogs())-1]
+	if last.Details["stock_release"] != "requested" || last.Details["payment_void"] != "requested" {
+		t.Fatalf("cancellation audit details = %+v, want stock release and payment void", last.Details)
 	}
 }
 
@@ -497,8 +559,9 @@ func TestCancellationHandlerRoutesCreatedShipmentToManualReview(t *testing.T) {
 	ids := []string{"msg_manual_review"}
 	now := time.Date(2026, 5, 29, 13, 30, 0, 0, time.UTC)
 	handler := handlerForTest(t, messaging.OrdersCancelQueue, Dependencies{
-		Orders: store,
-		Clock:  func() time.Time { return now },
+		Projector: store,
+		Orders:    store,
+		Clock:     func() time.Time { return now },
 		NewID: func(string) string {
 			id := ids[0]
 			ids = ids[1:]

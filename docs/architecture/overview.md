@@ -56,8 +56,9 @@ Current status:
    schedule bounded retry delivery, and acknowledge or dead-letter deliveries.
 8. `cmd/fulfillhub-worker` locks catalog stock, persists inventory
    reservations, records inventory rejections, payment authorizations, payment
-   failures, shipments, shipment failures, and order cancellations, then writes
-   the next saga event to the outbox.
+   failures, shipments, shipment failures, order cancellations, stock release,
+   and local payment void projections, then writes the next saga event to the
+   outbox.
 9. Compose smoke, load, stress, and spike profiling verifies the local runtime
    with outbox, ready queue, and unacknowledged queue drain.
 
