@@ -1,0 +1,108 @@
+syntax = "proto3";
+
+package fulfillhub.saga.v1;
+
+option go_package = "github.com/Defyland/fulfillhub-go-commerce-platform/internal/contracts/sagav1;sagav1";
+
+service SagaService {
+  rpc AdvanceSaga(AdvanceSagaRequest) returns (AdvanceSagaResponse);
+  rpc CompensateOrder(CompensateOrderRequest) returns (CompensateOrderResponse);
+  rpc GetSagaState(GetSagaStateRequest) returns (GetSagaStateResponse);
+  rpc ReplayDeadLetter(ReplayDeadLetterRequest) returns (ReplayDeadLetterResponse);
+}
+
+message RequestContext {
+  string merchant_id = 1;
+  string correlation_id = 2;
+  string idempotency_key = 3;
+  string actor_type = 4;
+  string actor_id = 5;
+  reserved 100 to 199;
+}
+
+message SagaEventEnvelope {
+  string message_id = 1;
+  string event_type = 2;
+  int32 schema_version = 3;
+  string occurred_at = 4;
+  string producer = 5;
+  string merchant_id = 6;
+  string order_id = 7;
+  string correlation_id = 8;
+  string causation_id = 9;
+  string payload_json = 10;
+  map<string, string> metadata = 11;
+  reserved 100 to 199;
+}
+
+message AdvanceSagaRequest {
+  RequestContext context = 1;
+  SagaEventEnvelope event = 2;
+  reserved 100 to 199;
+}
+
+message AdvanceSagaResponse {
+  string order_id = 1;
+  SagaStep accepted_step = 2;
+  repeated SagaEventEnvelope emitted_events = 3;
+  reserved 100 to 199;
+}
+
+message CompensateOrderRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  string source_event_type = 3;
+  string reason = 4;
+  reserved 100 to 199;
+}
+
+message CompensateOrderResponse {
+  string order_id = 1;
+  SagaStep compensation_step = 2;
+  repeated SagaEventEnvelope emitted_events = 3;
+  reserved 100 to 199;
+}
+
+message GetSagaStateRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  reserved 100 to 199;
+}
+
+message GetSagaStateResponse {
+  string order_id = 1;
+  SagaStep current_step = 2;
+  repeated SagaEventEnvelope history = 3;
+  reserved 100 to 199;
+}
+
+message ReplayDeadLetterRequest {
+  RequestContext context = 1;
+  string source_queue = 2;
+  string target_routing_key = 3;
+  int32 limit = 4;
+  string reason = 5;
+  reserved 100 to 199;
+}
+
+message ReplayDeadLetterResponse {
+  int32 replayed_count = 1;
+  int32 failed_count = 2;
+  repeated string replayed_message_ids = 3;
+  reserved 100 to 199;
+}
+
+enum SagaStep {
+  SAGA_STEP_UNSPECIFIED = 0;
+  SAGA_STEP_ORDER_CREATED = 1;
+  SAGA_STEP_INVENTORY_RESERVED = 2;
+  SAGA_STEP_INVENTORY_REJECTED = 3;
+  SAGA_STEP_PAYMENT_AUTHORIZED = 4;
+  SAGA_STEP_PAYMENT_FAILED = 5;
+  SAGA_STEP_SHIPMENT_CREATED = 6;
+  SAGA_STEP_SHIPMENT_FAILED = 7;
+  SAGA_STEP_ORDER_COMPLETED = 8;
+  SAGA_STEP_CANCELLATION_PENDING = 9;
+  SAGA_STEP_ORDER_CANCELLED = 10;
+  SAGA_STEP_MANUAL_REVIEW_REQUIRED = 11;
+}

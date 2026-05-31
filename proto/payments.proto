@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package fulfillhub.payments.v1;
+
+option go_package = "github.com/Defyland/fulfillhub-go-commerce-platform/internal/contracts/paymentsv1;paymentsv1";
+
+service PaymentsService {
+  rpc AuthorizePayment(AuthorizePaymentRequest) returns (AuthorizePaymentResponse);
+  rpc VoidPayment(VoidPaymentRequest) returns (VoidPaymentResponse);
+  rpc GetPaymentAuthorization(GetPaymentAuthorizationRequest) returns (GetPaymentAuthorizationResponse);
+}
+
+message RequestContext {
+  string merchant_id = 1;
+  string correlation_id = 2;
+  string idempotency_key = 3;
+  string source_message_id = 4;
+  reserved 100 to 199;
+}
+
+message Money {
+  int64 amount = 1;
+  string currency = 2;
+  reserved 100 to 199;
+}
+
+message AuthorizePaymentRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  string provider = 3;
+  string payment_credential_ref = 4;
+  Money amount = 5;
+  reserved 100 to 199;
+}
+
+message AuthorizePaymentResponse {
+  PaymentAuthorization authorization = 1;
+  reserved 100 to 199;
+}
+
+message VoidPaymentRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  string authorization_id = 3;
+  string reason = 4;
+  reserved 100 to 199;
+}
+
+message VoidPaymentResponse {
+  PaymentAuthorization authorization = 1;
+  reserved 100 to 199;
+}
+
+message GetPaymentAuthorizationRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  reserved 100 to 199;
+}
+
+message GetPaymentAuthorizationResponse {
+  PaymentAuthorization authorization = 1;
+  reserved 100 to 199;
+}
+
+message PaymentAuthorization {
+  string authorization_id = 1;
+  string order_id = 2;
+  string provider = 3;
+  PaymentStatus status = 4;
+  Money amount = 5;
+  string authorized_at = 6;
+  string voided_at = 7;
+  reserved 100 to 199;
+}
+
+enum PaymentStatus {
+  PAYMENT_STATUS_UNSPECIFIED = 0;
+  PAYMENT_STATUS_PENDING = 1;
+  PAYMENT_STATUS_AUTHORIZED = 2;
+  PAYMENT_STATUS_FAILED = 3;
+  PAYMENT_STATUS_VOIDED = 4;
+}

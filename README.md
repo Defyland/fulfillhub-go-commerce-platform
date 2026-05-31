@@ -88,6 +88,9 @@ Supporting API docs:
 
 - [docs/api/request-response-examples.md](./docs/api/request-response-examples.md)
 - [docs/api/error-format.md](./docs/api/error-format.md)
+- [docs/contracts/rest-vs-grpc.md](./docs/contracts/rest-vs-grpc.md)
+- [docs/contracts/grpc-error-mapping.md](./docs/contracts/grpc-error-mapping.md)
+- [docs/contracts/protobuf-versioning.md](./docs/contracts/protobuf-versioning.md)
 
 The API surface is versioned under `/api/v1` and covers:
 
@@ -98,6 +101,10 @@ The API surface is versioned under `/api/v1` and covers:
 - `GET /healthz`
 - `GET /readyz`
 - `GET /metrics`
+
+Internal gRPC/Protobuf contracts for future process boundaries live under
+`proto/`. They cover orders, inventory, payments, shipping, and saga operations
+without replacing the public REST/OpenAPI contract.
 
 ## Async or event architecture
 

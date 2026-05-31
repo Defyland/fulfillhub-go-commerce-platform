@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package fulfillhub.inventory.v1;
+
+option go_package = "github.com/Defyland/fulfillhub-go-commerce-platform/internal/contracts/inventoryv1;inventoryv1";
+
+service InventoryService {
+  rpc ReserveInventory(ReserveInventoryRequest) returns (ReserveInventoryResponse);
+  rpc ReleaseInventory(ReleaseInventoryRequest) returns (ReleaseInventoryResponse);
+  rpc GetReservation(GetReservationRequest) returns (GetReservationResponse);
+}
+
+message RequestContext {
+  string merchant_id = 1;
+  string correlation_id = 2;
+  string idempotency_key = 3;
+  string source_message_id = 4;
+  reserved 100 to 199;
+}
+
+message ReserveInventoryRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  repeated ReservationLine lines = 3;
+  reserved 100 to 199;
+}
+
+message ReservationLine {
+  string sku = 1;
+  int32 quantity = 2;
+  reserved 100 to 199;
+}
+
+message ReserveInventoryResponse {
+  string order_id = 1;
+  repeated Reservation reservations = 2;
+  reserved 100 to 199;
+}
+
+message ReleaseInventoryRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  string reason = 3;
+  reserved 100 to 199;
+}
+
+message ReleaseInventoryResponse {
+  string order_id = 1;
+  repeated Reservation reservations = 2;
+  reserved 100 to 199;
+}
+
+message GetReservationRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  reserved 100 to 199;
+}
+
+message GetReservationResponse {
+  string order_id = 1;
+  repeated Reservation reservations = 2;
+  reserved 100 to 199;
+}
+
+message Reservation {
+  string reservation_id = 1;
+  string order_id = 2;
+  string sku = 3;
+  int32 quantity = 4;
+  string warehouse_id = 5;
+  ReservationStatus status = 6;
+  string created_at = 7;
+  string released_at = 8;
+  reserved 100 to 199;
+}
+
+enum ReservationStatus {
+  RESERVATION_STATUS_UNSPECIFIED = 0;
+  RESERVATION_STATUS_RESERVED = 1;
+  RESERVATION_STATUS_REJECTED = 2;
+  RESERVATION_STATUS_RELEASED = 3;
+}

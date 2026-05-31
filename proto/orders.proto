@@ -1,0 +1,156 @@
+syntax = "proto3";
+
+package fulfillhub.orders.v1;
+
+option go_package = "github.com/Defyland/fulfillhub-go-commerce-platform/internal/contracts/ordersv1;ordersv1";
+
+service OrdersService {
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc CancelOrder(CancelOrderRequest) returns (CancelOrderResponse);
+}
+
+message RequestContext {
+  string merchant_id = 1;
+  string correlation_id = 2;
+  string idempotency_key = 3;
+  string actor_type = 4;
+  string actor_id = 5;
+  reserved 100 to 199;
+}
+
+message Money {
+  int64 amount = 1;
+  string currency = 2;
+  reserved 100 to 199;
+}
+
+message Customer {
+  string id = 1;
+  string email = 2;
+  string full_name = 3;
+  reserved 100 to 199;
+}
+
+message Address {
+  string line_1 = 1;
+  string line_2 = 2;
+  string city = 3;
+  string state = 4;
+  string postal_code = 5;
+  string country = 6;
+  reserved 100 to 199;
+}
+
+message OrderItemInput {
+  string sku = 1;
+  int32 quantity = 2;
+  Money unit_price = 3;
+  reserved 100 to 199;
+}
+
+message PaymentMethod {
+  string provider = 1;
+  string payment_token = 2;
+  reserved 100 to 199;
+}
+
+message CreateOrderRequest {
+  RequestContext context = 1;
+  string external_order_id = 2;
+  string currency = 3;
+  Customer customer = 4;
+  Address shipping_address = 5;
+  repeated OrderItemInput items = 6;
+  PaymentMethod payment_method = 7;
+  reserved 100 to 199;
+}
+
+message CreateOrderResponse {
+  Order order = 1;
+  bool idempotent_replay = 2;
+  reserved 100 to 199;
+}
+
+message GetOrderRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  reserved 100 to 199;
+}
+
+message GetOrderResponse {
+  Order order = 1;
+  reserved 100 to 199;
+}
+
+message CancelOrderRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  string reason = 3;
+  RequestedBy requested_by = 4;
+  reserved 100 to 199;
+}
+
+message RequestedBy {
+  string type = 1;
+  string id = 2;
+  reserved 100 to 199;
+}
+
+message CancelOrderResponse {
+  Order order = 1;
+  reserved 100 to 199;
+}
+
+message Order {
+  string order_id = 1;
+  string merchant_id = 2;
+  string external_order_id = 3;
+  OrderStatus status = 4;
+  string currency = 5;
+  Money subtotal = 6;
+  Money shipping = 7;
+  Money total = 8;
+  repeated OrderItem items = 9;
+  PaymentSummary payment = 10;
+  ShipmentSummary shipment = 11;
+  string created_at = 12;
+  string updated_at = 13;
+  reserved 100 to 199;
+}
+
+message OrderItem {
+  string sku = 1;
+  int32 quantity = 2;
+  Money unit_price = 3;
+  string reservation_status = 4;
+  reserved 100 to 199;
+}
+
+message PaymentSummary {
+  string provider = 1;
+  string status = 2;
+  string authorization_id = 3;
+  reserved 100 to 199;
+}
+
+message ShipmentSummary {
+  string shipment_id = 1;
+  string status = 2;
+  string carrier = 3;
+  string tracking_number = 4;
+  reserved 100 to 199;
+}
+
+enum OrderStatus {
+  ORDER_STATUS_UNSPECIFIED = 0;
+  ORDER_STATUS_PENDING_FULFILLMENT = 1;
+  ORDER_STATUS_INVENTORY_RESERVED = 2;
+  ORDER_STATUS_PAYMENT_AUTHORIZED = 3;
+  ORDER_STATUS_SHIPMENT_CREATED = 4;
+  ORDER_STATUS_CANCELLATION_PENDING = 5;
+  ORDER_STATUS_MANUAL_REVIEW = 6;
+  ORDER_STATUS_CANCELLED = 7;
+  ORDER_STATUS_COMPLETED = 8;
+  ORDER_STATUS_FAILED = 9;
+}

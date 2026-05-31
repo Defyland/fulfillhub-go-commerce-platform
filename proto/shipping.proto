@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package fulfillhub.shipping.v1;
+
+option go_package = "github.com/Defyland/fulfillhub-go-commerce-platform/internal/contracts/shippingv1;shippingv1";
+
+service ShippingService {
+  rpc CreateShipment(CreateShipmentRequest) returns (CreateShipmentResponse);
+  rpc GetShipment(GetShipmentRequest) returns (GetShipmentResponse);
+  rpc CancelShipment(CancelShipmentRequest) returns (CancelShipmentResponse);
+}
+
+message RequestContext {
+  string merchant_id = 1;
+  string correlation_id = 2;
+  string idempotency_key = 3;
+  string source_message_id = 4;
+  reserved 100 to 199;
+}
+
+message Address {
+  string line_1 = 1;
+  string line_2 = 2;
+  string city = 3;
+  string state = 4;
+  string postal_code = 5;
+  string country = 6;
+  reserved 100 to 199;
+}
+
+message CreateShipmentRequest {
+  RequestContext context = 1;
+  string order_id = 2;
+  Address destination = 3;
+  repeated ShipmentLine lines = 4;
+  reserved 100 to 199;
+}
+
+message ShipmentLine {
+  string sku = 1;
+  int32 quantity = 2;
+  reserved 100 to 199;
+}
+
+message CreateShipmentResponse {
+  Shipment shipment = 1;
+  reserved 100 to 199;
+}
+
+message GetShipmentRequest {
+  RequestContext context = 1;
+  string shipment_id = 2;
+  reserved 100 to 199;
+}
+
+message GetShipmentResponse {
+  Shipment shipment = 1;
+  reserved 100 to 199;
+}
+
+message CancelShipmentRequest {
+  RequestContext context = 1;
+  string shipment_id = 2;
+  string reason = 3;
+  reserved 100 to 199;
+}
+
+message CancelShipmentResponse {
+  Shipment shipment = 1;
+  reserved 100 to 199;
+}
+
+message Shipment {
+  string shipment_id = 1;
+  string order_id = 2;
+  string merchant_id = 3;
+  string carrier = 4;
+  string tracking_number = 5;
+  ShipmentStatus status = 6;
+  repeated ShipmentEvent events = 7;
+  reserved 100 to 199;
+}
+
+message ShipmentEvent {
+  string occurred_at = 1;
+  ShipmentStatus status = 2;
+  string description = 3;
+  reserved 100 to 199;
+}
+
+enum ShipmentStatus {
+  SHIPMENT_STATUS_UNSPECIFIED = 0;
+  SHIPMENT_STATUS_CREATED = 1;
+  SHIPMENT_STATUS_CANCEL_REQUESTED = 2;
+  SHIPMENT_STATUS_CANCELLED = 3;
+  SHIPMENT_STATUS_FAILED = 4;
+}

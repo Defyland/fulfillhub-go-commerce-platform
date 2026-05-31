@@ -29,6 +29,7 @@ docs/adr
 docs/api
 docs/architecture
 docs/benchmarks
+docs/contracts
 docs/diagrams
 docs/events
 docs/observability
@@ -38,6 +39,7 @@ benchmarks
 benchmarks/k6
 benchmarks/results
 scripts
+proto
 .github/workflows
 "
 
@@ -115,7 +117,13 @@ internal/providers/webhook.go
 internal/providers/webhook_test.go
 internal/spec/consistency_test.go
 internal/spec/event_contracts_test.go
+internal/spec/protobuf_contracts_test.go
 internal/spec/production_readiness_test.go
+proto/orders.proto
+proto/inventory.proto
+proto/payments.proto
+proto/shipping.proto
+proto/saga.proto
 docs/production-readiness.md
 docs/engineering-baseline.md
 docs/api/request-response-examples.md
@@ -126,6 +134,9 @@ docs/architecture/database-design.md
 docs/architecture/senior-technical-assessment.md
 docs/benchmarks/methodology.md
 docs/benchmarks/results-status.md
+docs/contracts/grpc-error-mapping.md
+docs/contracts/protobuf-versioning.md
+docs/contracts/rest-vs-grpc.md
 docs/diagrams/system-context.md
 docs/diagrams/order-saga-sequence.md
 docs/events/catalog.md
