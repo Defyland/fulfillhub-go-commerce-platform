@@ -8,6 +8,7 @@ import (
 func TestDeploymentDocsExplainWhyRailwayIsIntentionallyOmitted(t *testing.T) {
 	required := map[string][]string{
 		"README.md": {
+			"This repository is an R&D asset for studying failure-aware commerce orchestration.",
 			"FulfillHub intentionally does not ship a Railway demo.",
 			"requires the migration job, public API, outbox\nrelay, queue-specific workers, PostgreSQL, RabbitMQ, Redis",
 			"Docker Compose for full local saga evidence",
@@ -15,7 +16,8 @@ func TestDeploymentDocsExplainWhyRailwayIsIntentionallyOmitted(t *testing.T) {
 		},
 		"docs/architecture/deployment-readiness.md": {
 			"Railway omission is intentional",
-			"A truthful runnable\nslice needs the `fulfillhub-migrate` release step, the public API, the outbox\nrelay, queue-specific worker processes, PostgreSQL, RabbitMQ, Redis",
+			"As an R&D asset",
+			"a truthful runnable slice needs the `fulfillhub-migrate` release step, the public API, the outbox relay, queue-specific worker processes, PostgreSQL, RabbitMQ, Redis",
 			"Docker Compose for local end-to-end evidence",
 			"Kubernetes blueprint for production-like topology",
 		},

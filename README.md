@@ -4,6 +4,10 @@ FulfillHub is a Go-based commerce orchestration platform for merchants that need
 
 > Status: Phase 4 worker slice. The repository now includes a Go HTTP API, PostgreSQL-backed persistence with embedded migrations, tenant foreign keys, catalog-backed inventory reservations, an outbox relay, RabbitMQ publisher and consumer topology, causal message metadata, workerized fulfillment happy path with durable inventory/payment/shipment/notification/cancellation/compensation projections, Redis rate limiting, inbox idempotency, DLQ replay tooling, provider adapters, OpenTelemetry OTLP tracing through a local collector, request tests, authorization tests, database tests, messaging tests, k6 smoke/load/stress/spike results, a native benchmark, Compose-backed smoke/load/stress/spike profiling, Grafana dashboard definition, Docker build validation, Docker Compose config, and documentation baseline.
 
+This repository is an R&D asset for studying failure-aware commerce orchestration.
+It is intentionally runnable and production-shaped, but it is not presented as a
+hosted merchant SaaS product or a one-click Railway app.
+
 ## What is this product?
 
 FulfillHub is the backend control plane behind an online store checkout. It accepts orders from merchant storefronts, validates tenant access, reserves stock, coordinates payment authorization, triggers shipment creation, and emits lifecycle events for downstream systems such as notifications, analytics, and support tooling.
@@ -498,10 +502,10 @@ protection, secrets, and supply-chain runbooks under `docs/runbooks` and
 
 ## Deployment truth
 
-FulfillHub intentionally does not ship a Railway demo. The truthful runtime
-contract in this repository requires the migration job, public API, outbox
-relay, queue-specific workers, PostgreSQL, RabbitMQ, Redis, and ops or metrics
-secrets to be present together.
+FulfillHub intentionally does not ship a Railway demo. As an R&D asset, the
+truthful runtime contract in this repository requires the migration job, public
+API, outbox relay, queue-specific workers, PostgreSQL, RabbitMQ, Redis, and
+ops or metrics secrets to be present together.
 
 A single-service Railway deployment would bypass the relay and worker topology
 that the repository is explicitly proving. The supported runnable surfaces here

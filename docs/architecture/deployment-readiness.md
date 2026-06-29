@@ -17,10 +17,10 @@ FulfillHub already has production-like concerns in its local architecture: Postg
 
 ## Railway omission is intentional
 
-This repository does not provide a Railway deployment. A truthful runnable
-slice needs the `fulfillhub-migrate` release step, the public API, the outbox
-relay, queue-specific worker processes, PostgreSQL, RabbitMQ, Redis, and the
-associated ops or metrics secrets.
+This repository does not provide a Railway deployment. As an R&D asset, a
+truthful runnable slice needs the `fulfillhub-migrate` release step, the public
+API, the outbox relay, queue-specific worker processes, PostgreSQL, RabbitMQ,
+Redis, and the associated ops or metrics secrets.
 
 A single-service Railway deploy would be misleading because it would drop the
 relay and worker topology that the repository uses to prove saga durability,
