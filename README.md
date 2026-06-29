@@ -496,6 +496,18 @@ Operational launch controls are documented in the deployment, alert, data
 protection, secrets, and supply-chain runbooks under `docs/runbooks` and
 `docs/security`.
 
+## Deployment truth
+
+FulfillHub intentionally does not ship a Railway demo. The truthful runtime
+contract in this repository requires the migration job, public API, outbox
+relay, queue-specific workers, PostgreSQL, RabbitMQ, Redis, and ops or metrics
+secrets to be present together.
+
+A single-service Railway deployment would bypass the relay and worker topology
+that the repository is explicitly proving. The supported runnable surfaces here
+are Docker Compose for full local saga evidence and the Kubernetes blueprint
+under `deployments/kubernetes/base` for production-like shape.
+
 ## How to evaluate this repository in five minutes
 
 Start with:

@@ -15,6 +15,19 @@ FulfillHub already has production-like concerns in its local architecture: Postg
 - Production alert rules and runbooks for rollback, SLO response, data
   protection, secrets, supply chain, and event contract changes.
 
+## Railway omission is intentional
+
+This repository does not provide a Railway deployment. A truthful runnable
+slice needs the `fulfillhub-migrate` release step, the public API, the outbox
+relay, queue-specific worker processes, PostgreSQL, RabbitMQ, Redis, and the
+associated ops or metrics secrets.
+
+A single-service Railway deploy would be misleading because it would drop the
+relay and worker topology that the repository uses to prove saga durability,
+retry behavior, DLQ handling, and release sequencing. The supported runnable
+surfaces in this repo are Docker Compose for local end-to-end evidence and the
+Kubernetes blueprint for production-like topology.
+
 ## Platform integration still required
 
 - Cloud-specific Terraform/Pulumi or Helm overlays are still required for real
