@@ -452,6 +452,16 @@ RABBITMQ_URL='amqp://guest:guest@localhost:5672/' \
   go test ./internal/messaging -run TestRabbitPublisherIntegration -count=1
 ```
 
+Run the portable reviewer path:
+
+```sh
+make review
+```
+
+That validates the repository evidence pack, production-readiness checks,
+formatting, vet, the full Go suite, benchmark smoke, benchmark budget
+thresholds, and binary packaging without requiring Docker services.
+
 Run the native benchmark:
 
 ```sh
@@ -485,6 +495,27 @@ cloud IAM bindings must be supplied by the target platform.
 Operational launch controls are documented in the deployment, alert, data
 protection, secrets, and supply-chain runbooks under `docs/runbooks` and
 `docs/security`.
+
+## How to evaluate this repository in five minutes
+
+Start with:
+
+```sh
+make review
+```
+
+For one deeper runtime proof with Docker available, run:
+
+```sh
+./scripts/run_compose_saga_smoke.sh
+```
+
+For dependency-backed focused proofs, run:
+
+```sh
+DATABASE_URL='postgres://fulfillhub:postgres@localhost:5432/fulfillhub_test?sslmode=disable' make postgres-integration
+RABBITMQ_URL='amqp://guest:guest@localhost:5672/' make rabbitmq-integration
+```
 
 ## Failure scenarios
 
