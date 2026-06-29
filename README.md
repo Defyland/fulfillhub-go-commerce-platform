@@ -558,3 +558,11 @@ Runbook detail lives in [docs/runbooks/incident-response.md](./docs/runbooks/inc
 6. Production-readiness pack: deployment blueprint, controlled migrations,
    alerting/runbooks, secrets model, data protection policy, and provider
    webhook hardening
+
+## License
+
+This repository is published under the MIT License. See
+[LICENSE.txt](./LICENSE.txt).
+
+The explicit license keeps the code, ADRs, contracts, and runbooks reusable as
+an engineering study asset instead of leaving reuse legally ambiguous.
